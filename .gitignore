@@ -17,3 +17,16 @@ tests/test_io/__pycache__/test_image_stack_loader.cpython-314-pytest-9.0.2.pyc
 tests/test_io/__pycache__/test_metadata_parser.cpython-314-pytest-9.0.2.pyc
 tests/test_io/__pycache__/test_txt_matrix_loader.cpython-314-pytest-9.0.2.pyc
 tests/test_io/__pycache__/test_z_axis_loader.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/envelope/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/envelope/__pycache__/analytic.cpython-314.pyc
+src/quality_tool/envelope/__pycache__/base.cpython-314.pyc
+src/quality_tool/envelope/__pycache__/registry.cpython-314.pyc
+src/quality_tool/preprocessing/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/preprocessing/__pycache__/basic.cpython-314.pyc
+src/quality_tool/preprocessing/__pycache__/roi.cpython-314.pyc
+tests/test_envelope/__pycache__/__init__.cpython-314.pyc
+tests/test_envelope/__pycache__/test_analytic.cpython-314-pytest-9.0.2.pyc
+tests/test_envelope/__pycache__/test_registry.cpython-314-pytest-9.0.2.pyc
+tests/test_preprocessing/__pycache__/__init__.cpython-314.pyc
+tests/test_preprocessing/__pycache__/test_basic.cpython-314-pytest-9.0.2.pyc
+tests/test_preprocessing/__pycache__/test_roi.cpython-314-pytest-9.0.2.pyc

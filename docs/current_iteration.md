@@ -2,167 +2,172 @@
 
 ## Iteration name
 
-Core models + IO scaffold
+Preprocessing + ROI + Envelope scaffold
 
 ## Goal
 
-Implement the first practical foundation of the project:
-- core internal data structures
-- acquisition metadata parsing
-- z-axis loading
-- image stack loading
-- txt matrix loading
-- basic validation tests
+Implement the next foundational layer of the project:
+- explicit preprocessing functions
+- ROI extraction
+- envelope interface
+- envelope registry
+- first envelope method
+- tests for all of the above
 
-This iteration is about establishing a correct and stable real-data loading layer.
+This iteration is about preparing the signal-processing layer that future metrics will use.
 
 ## Why this iteration matters
 
-Everything downstream depends on correct loading and normalization.
+The project is intended to evolve into a modular WLI research workbench.
 
-Before metrics, thresholding, and comparison workflows, the project must reliably:
-- read real input data
-- normalize it to the canonical internal format
-- preserve image geometry
-- attach useful metadata
-- define a valid z-axis
+That means metrics should not be developed in isolation.
+Before implementing actual quality metrics, the project needs a clean and extensible way to:
+- preprocess signals,
+- crop local signal regions,
+- compute envelope representations,
+- compare different preprocessing and envelope strategies later.
+
+This iteration lays that foundation.
 
 ## In scope
 
-### Core models
-Implement core dataclasses for:
-- `SignalSet`
-- `MetricResult`
-- `MetricMapResult`
-- `ThresholdResult`
+### Preprocessing basics
+Implement simple explicit preprocessing functions for single 1D signals.
 
-These should match the architecture document.
+Initial supported operations:
+- baseline subtraction
+- amplitude normalization
+- optional simple smoothing
 
-### Metadata parsing
-Implement parsing of acquisition info text files.
+Keep these as simple standalone functions or a very light structured API.
+
+Requirements:
+- input: 1D signal
+- output: processed 1D signal of the same length
+- deterministic behavior
+- no in-place modification of the original input
+- clear validation for invalid inputs
+
+### ROI extraction
+Implement explicit ROI extraction for a single signal.
+
+Required behavior:
+- input: 1D signal
+- parameter: `segment_size`
+- parameter: centering mode
+
+For this iteration:
+- support centering mode `raw_max`
 
 Behavior:
-- parse useful normalized fields only
-- ignore irrelevant fields
-- tolerate missing optional fields
-- do not store the full raw text as internal metadata
+- extract a segment of length `segment_size`
+- center it around the maximum of the raw signal
+- handle boundaries clearly and deterministically
 
-Expected normalized fields include:
-- `pixel_size_x_mm`
-- `pixel_size_y_mm`
-- `wavelength_nm`
-- `coherence_length_nm`
-- `objective_magnification`
-- `z_step_nm`
-- `z_start_mm`
-- `z_end_mm`
-- `oversampling_factor`
-- `trigger_rate_fps`
-- `scan_velocity_um_s`
-- `exposure_time_us`
-- `scan_distance_during_exposure_nm`
-- `periods_during_exposure`
-- `illumination_intensity`
-- `x_axis_offset_mm`
-- `y_axis_offset_mm`
+Requirements:
+- output must always have length `segment_size`
+- do not silently return malformed segments
+- fail clearly or handle edge cases explicitly
 
-### Z-axis loading
-Implement support for:
-- explicit `z_axis.txt`
-- fallback to index-based `np.arange(M)`
+### Envelope interface
+Implement a common envelope interface in:
+- `src/quality_tool/envelope/base.py`
 
-`z_axis` must always exist in `SignalSet`.
+Use the architecture as source of truth.
 
-### Image stack loader
-Implement loader for `.tif` / `.tiff` stacks.
+The interface should support:
+- input signal
+- optional z-axis
+- optional context
+- output envelope with same length as input signal
 
-Required behavior:
-- load stack data
-- normalize to canonical shape `(H, W, M)`
-- determine `width` and `height`
-- attach metadata if sidecar info file exists
-- attach explicit z-axis if `z_axis.txt` exists
-- otherwise create index-based z-axis
-- return `SignalSet`
+### Envelope registry
+Implement a simple registry in:
+- `src/quality_tool/envelope/registry.py`
 
-### TXT matrix loader
-Implement loader for `.txt` signal matrices.
+It should allow:
+- registering named envelope methods
+- retrieving a method by name
+- listing available methods
 
-Required behavior:
-- read matrix of shape `(N, M)`
-- require `width` and `height` as arguments if not otherwise available
-- validate `N == width * height`
-- reshape to `(H, W, M)`
-- attach metadata if sidecar info file exists
-- attach explicit z-axis if `z_axis.txt` exists
-- otherwise create index-based z-axis
-- return `SignalSet`
+Keep it simple and explicit.
 
-### Validation and tests
-Add tests covering:
-- correct `SignalSet` construction
-- metadata parsing of representative fields
-- fallback behavior when optional metadata is absent
-- explicit z-axis loading
-- index-based z-axis fallback
-- txt reshape from `(N, M)` to `(H, W, M)`
-- invalid txt shape mismatch against `width * height`
+### First envelope method
+Implement one first envelope method.
+
+Recommended initial choice:
+- analytic signal / Hilbert-based envelope
+
+If that requires adding `scipy`, it is acceptable only if kept minimal and justified.
+If avoiding `scipy` is preferred for now, implement a simpler placeholder method only if it is still meaningful.
+
+The method must:
+- return an envelope with the same length as input
+- fit the common envelope interface
+- be testable
+- be usable later by metrics
+
+### Tests
+Add tests for:
+- baseline subtraction
+- normalization
+- smoothing if implemented
+- ROI extraction with `raw_max`
+- ROI boundary handling
+- envelope registry behavior
+- first envelope method output shape and basic behavior
 
 ## Out of scope
 
 Do not implement in this iteration:
-- metrics registry
 - actual quality metrics
-- preprocessing pipeline
-- ROI extraction
-- envelope methods
+- metric registry
 - evaluator
-- thresholding logic
+- thresholding
 - visualization
-- export
+- export changes
 - synthetic signals
 - benchmark workflows
+- multi-step experiment configs
 
 ## File targets
 
 Expected modules to create:
 
-- `src/quality_tool/core/models.py`
-- `src/quality_tool/io/metadata_parser.py`
-- `src/quality_tool/io/z_axis_loader.py`
-- `src/quality_tool/io/image_stack_loader.py`
-- `src/quality_tool/io/txt_matrix_loader.py`
+- `src/quality_tool/preprocessing/basic.py`
+- `src/quality_tool/preprocessing/roi.py`
+- `src/quality_tool/envelope/base.py`
+- `src/quality_tool/envelope/registry.py`
+- `src/quality_tool/envelope/analytic.py`
 
 Expected tests to create:
 
-- `tests/test_io/test_metadata_parser.py`
-- `tests/test_io/test_z_axis_loader.py`
-- `tests/test_io/test_txt_matrix_loader.py`
+- `tests/test_preprocessing/test_basic.py`
+- `tests/test_preprocessing/test_roi.py`
+- `tests/test_envelope/test_registry.py`
+- `tests/test_envelope/test_analytic.py`
 
-Add image stack tests too if practical for the current repository setup.
+Add `__init__.py` files where needed.
 
 ## Implementation preferences
 
 - keep code simple and readable
-- keep responsibilities separated
-- use dataclasses for core models
-- use typed functions where reasonable
-- avoid premature abstraction
-- avoid hidden behavior
-- fail clearly on invalid shapes
-- handle optional metadata gracefully
+- prefer explicit functions over overengineered abstractions
+- no hidden preprocessing inside unrelated modules
+- no in-place mutation of input arrays
+- validate signal dimensionality clearly
+- keep extension paths obvious for future methods
 
 ## Definition of done
 
 This iteration is done when:
-- the required modules exist
-- loaders return valid `SignalSet`
-- canonical shape `(H, W, M)` is enforced
-- metadata parsing works for the targeted useful fields
-- z-axis behavior is correct in both modes
-- txt loader validates shape correctly
-- tests exist for the implemented functionality
-- code is aligned with `docs/architecture.md`
+- preprocessing basics exist and are tested
+- ROI extraction exists and is tested
+- envelope interface exists
+- envelope registry exists and works
+- one envelope method exists and is tested
+- all created code is aligned with `docs/architecture.md`
+- no metric logic is implemented yet
 
 ## Expected assistant workflow
 
