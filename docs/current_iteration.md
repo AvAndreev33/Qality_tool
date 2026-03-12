@@ -2,209 +2,207 @@
 
 ## Iteration name
 
-Metric interface + spectral support + first baseline metrics
+Evaluator + metric map + thresholding
 
 ## Goal
 
-Introduce the metric layer of the system together with the first shared spectral representation.
+Implement the first full evaluation pipeline for the project.
 
-This iteration implements:
-- metric interface
-- metric registry
-- shared FFT / spectrum support
-- first baseline metrics:
-  - fringe visibility
-  - SNR
-  - power band ratio
-- tests for all of the above
+This iteration should make it possible to:
+- take a loaded `SignalSet`
+- optionally preprocess each signal
+- optionally extract ROI
+- optionally compute envelope
+- evaluate one metric over the full dataset
+- collect results into `MetricMapResult`
+- apply thresholding
+- obtain a 2D binary mask
 
-This iteration establishes the first real quality-analysis methods and prepares the project for full-image evaluation in the next step.
+This is the first iteration where the system becomes a working quality-analysis pipeline.
 
 ---
 
 ## Why this iteration matters
 
-The project is intended to evolve into a modular WLI research workbench.
+The previous iterations implemented:
+- data loading
+- preprocessing scaffold
+- ROI extraction
+- envelope support
+- spectral support
+- baseline metrics
 
-That means metrics should not be implemented as isolated one-off functions.
-Before building the full evaluation pipeline, the project needs:
+But these pieces are still separate.
 
-- a common metric interface
-- a registry for metrics
-- a shared way to compute and reuse spectral representations
-- a first small set of meaningful baseline quality criteria
+This iteration connects them into one coherent evaluation flow.
 
-This iteration creates the first real metric layer while keeping future extensibility in mind.
+It is the first real end-to-end pipeline for quality analysis on WLI signals.
 
 ---
 
 ## In scope
 
-### Metric interface
+### Evaluator
 
-Implement the common metric interface.
-
-Location:
-- `src/quality_tool/metrics/base.py`
-
-Requirements:
-- define a common protocol or lightweight base class
-- input:
-  - `signal`
-  - optional `z_axis`
-  - optional `envelope`
-  - optional `context`
-- output:
-  - `MetricResult`
-
-Rules:
-- metrics must not modify input arrays in-place
-- metrics must not silently apply unrelated preprocessing
-- metrics should fail gracefully using `valid=False` when appropriate
-
----
-
-### Metric registry
-
-Implement a simple metric registry.
+Implement the main evaluator module.
 
 Location:
-- `src/quality_tool/metrics/registry.py`
+- `src/quality_tool/evaluation/evaluator.py`
 
-Capabilities:
-- register metrics by name
-- retrieve metric by name
-- list available metrics
-
-Keep the registry simple and explicit.
-
----
-
-### Shared FFT / spectrum support
-
-Implement a shared spectral helper module.
-
-Recommended location:
-- `src/quality_tool/spectral/fft.py`
-
-Purpose:
-- compute FFT-derived representations used by multiple metrics
-- keep FFT logic out of individual metric implementations
-- prepare for future reuse by evaluator and visualization code
+Responsibilities:
+- accept a `SignalSet`
+- accept one metric instance
+- optionally accept preprocessing settings
+- optionally accept ROI settings
+- optionally accept envelope method
+- iterate over all pixel signals
+- evaluate the metric for each signal
+- return `MetricMapResult`
 
 Requirements:
-- provide a simple function or small API to compute spectral representation from a 1D signal
-- return a consistent result structure, for example:
-  - frequencies
-  - complex spectrum
-  - magnitude / power spectrum
-- keep it simple, readable, and testable
+- preserve image layout
+- produce `score_map` with shape `(H, W)`
+- produce `valid_map` with shape `(H, W)`
+- collect feature maps where possible
+- return metadata describing evaluation settings
 
-Important architectural note:
-- this iteration does not need a full caching system
-- but the design should allow future reuse of precomputed FFT results through `context`
-
-Metrics that need spectral information should be able to:
-- compute it internally if absent
-- or use precomputed spectral data from `context` if available
+The evaluator should be explicit and readable.
+Do not overengineer it.
 
 ---
 
-### Baseline metrics
+### Preprocessing integration
 
-Implement the following baseline quality metrics.
+The evaluator must support optional preprocessing before metric evaluation.
 
-#### 1. Fringe visibility
+For this iteration, support integration with the preprocessing functions already implemented.
 
-Implement a signal-quality metric representing fringe visibility.
+The evaluator should make preprocessing order explicit.
 
-Location suggestion:
-- `src/quality_tool/metrics/baseline/fringe_visibility.py`
+Recommended order for this iteration:
+1. start from raw signal
+2. optionally apply preprocessing
+3. optionally apply ROI extraction
+4. optionally compute envelope
+5. evaluate metric
+
+This order should be documented in code.
+
+---
+
+### ROI integration
+
+The evaluator must support optional ROI extraction.
 
 Requirements:
-- define clearly how fringe visibility is computed
-- document the chosen formula in code docstring
-- return `MetricResult`
-
-The first version should prefer a simple and interpretable definition.
+- if ROI extraction is enabled, apply it before metric evaluation
+- if ROI extraction is enabled and envelope is also enabled, compute envelope on the ROI signal that is actually passed to the metric
+- make this behavior explicit in metadata / evaluator docstring
 
 ---
 
-#### 2. SNR
+### Envelope integration
 
-Implement a signal-to-noise ratio metric.
-
-Location suggestion:
-- `src/quality_tool/metrics/baseline/snr.py`
+The evaluator must support optional envelope computation.
 
 Requirements:
-- define clearly what is treated as signal and what is treated as noise
-- document the chosen approximation in code docstring
-- return `MetricResult`
+- envelope method should be optional
+- if provided, compute envelope for each evaluated signal
+- pass envelope into `metric.evaluate(...)`
+- if not provided, pass `None`
 
-The first version should prefer a simple and stable heuristic rather than a complex estimator.
+Do not add automatic hidden envelope behavior inside the evaluator beyond this.
 
 ---
 
-#### 3. Power band ratio
+### Shared spectral reuse through context
 
-Implement a spectral metric based on power ratio between selected frequency bands.
+The evaluator should support simple context-based reuse of derived signal representations.
 
-Location suggestion:
-- `src/quality_tool/metrics/baseline/power_band_ratio.py`
+For this iteration:
+- if a metric may use spectral data, the evaluator may precompute FFT-derived data once per signal and pass it through `context`
+- keep this simple
+- do not add a heavy caching framework
+
+A lightweight pattern is enough, for example:
+- build a `context` dict per signal
+- include precomputed `spectral_result` when needed
+
+This should remain readable and local.
+
+---
+
+### MetricMapResult assembly
+
+The evaluator must assemble full-image outputs into `MetricMapResult`.
 
 Requirements:
-- use the shared FFT / spectrum support
-- define clearly which band is considered numerator and denominator
-- allow future configurability of band limits
-- document the chosen formula in code docstring
-- return `MetricResult`
+- `score_map.shape == (H, W)`
+- `valid_map.shape == (H, W)`
+- `feature_maps` should contain `(H, W)` arrays where possible
+- invalid metric results must be reflected in `valid_map`
+- choose a clear convention for invalid score values and keep it consistent
 
-This metric should be designed so that future variants can reuse the same spectral helper.
+Document that convention in code.
 
 ---
 
-### Metric outputs
+### Thresholding
 
-All metrics must return `MetricResult`.
+Implement thresholding support.
 
-Fields:
-- `score`
-- optional `features`
-- `valid`
-- optional `notes`
+Location:
+- `src/quality_tool/evaluation/thresholding.py`
 
-Useful intermediate values may be placed into `features` when appropriate.
+Requirements:
+- accept a `MetricMapResult`
+- accept a scalar threshold
+- accept a keep rule such as:
+  - `score >= threshold`
+  - `score <= threshold`
+- return `ThresholdResult`
+
+Behavior:
+- output mask must have shape `(H, W)`
+- invalid pixels from `valid_map` must be handled explicitly and consistently
+- compute simple summary stats, e.g.:
+  - number of valid pixels
+  - number of kept pixels
+  - kept fraction
+
+Keep thresholding logic simple and explicit.
 
 ---
 
 ### Tests
 
 Add tests for:
-- metric registry behavior
-- FFT / spectrum helper behavior
-- each baseline metric on small synthetic signals
-- correct `MetricResult` output structure
-- graceful handling of invalid or ambiguous cases
-- use of precomputed spectral data from `context` where applicable
+- evaluator output shape
+- evaluator on a small synthetic `SignalSet`
+- evaluator with and without preprocessing
+- evaluator with and without ROI
+- evaluator with and without envelope
+- evaluator with metric that uses spectral context
+- proper assembly of `MetricMapResult`
+- thresholding with both keep rules
+- thresholding behavior with invalid pixels
 
-Tests should remain small, synthetic, and deterministic.
+Tests should stay synthetic, small, and deterministic.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- full-image evaluation
-- metric map creation
-- thresholding
 - visualization
 - export
+- multi-metric comparison
+- experiment manifests
 - synthetic signals
-- experiment configs
-- full FFT caching/orchestration across the whole pipeline
+- benchmark workflows
+- automatic optimization of thresholds
 
-A full shared-computation strategy will be handled later in evaluator-level logic.
+Keep this iteration focused on one-metric full-dataset evaluation.
 
 ---
 
@@ -212,49 +210,38 @@ A full shared-computation strategy will be handled later in evaluator-level logi
 
 Expected modules:
 
-- `src/quality_tool/metrics/base.py`
-- `src/quality_tool/metrics/registry.py`
-
-- `src/quality_tool/spectral/__init__.py`
-- `src/quality_tool/spectral/fft.py`
-
-- `src/quality_tool/metrics/baseline/fringe_visibility.py`
-- `src/quality_tool/metrics/baseline/snr.py`
-- `src/quality_tool/metrics/baseline/power_band_ratio.py`
+- `src/quality_tool/evaluation/evaluator.py`
+- `src/quality_tool/evaluation/thresholding.py`
 
 Expected tests:
 
-- `tests/test_metrics/test_registry.py`
-- `tests/test_metrics/test_baseline_metrics.py`
-- `tests/test_spectral/test_fft.py`
+- `tests/test_evaluation/test_evaluator.py`
+- `tests/test_evaluation/test_thresholding.py`
 
-Add `__init__.py` files where needed.
+You may add small helper utilities inside `evaluation/` if truly needed, but avoid unnecessary abstraction.
 
 ---
 
 ## Implementation preferences
 
-- keep formulas explicit and documented
-- keep code simple and readable
-- prefer clear heuristics over premature sophistication
-- separate shared FFT logic from metric implementations
-- design metrics so they can later consume precomputed derived data through `context`
-- avoid introducing a heavy caching framework in this iteration
+- keep the evaluator explicit and easy to read
+- prefer a straightforward nested loop over premature optimization
+- keep evaluation order explicit
+- keep context construction local and understandable
+- keep invalid-result handling explicit
+- avoid hidden auto-magic behavior
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- metric interface exists
-- metric registry works
-- shared FFT / spectrum helper exists
-- fringe visibility metric exists
-- SNR metric exists
-- power band ratio metric exists
-- spectral helper is tested
-- baseline metrics are tested
-- metrics return `MetricResult`
+- evaluator exists
+- evaluator can process a full `SignalSet`
+- evaluator returns valid `MetricMapResult`
+- thresholding exists
+- thresholding returns valid `ThresholdResult`
+- tests exist and pass
 - code remains aligned with `docs/architecture.md`
 
 ---

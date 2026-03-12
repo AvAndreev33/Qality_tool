@@ -44,3 +44,9 @@ tests/test_metrics/__pycache__/test_baseline_metrics.cpython-314-pytest-9.0.2.py
 tests/test_metrics/__pycache__/test_registry.cpython-314-pytest-9.0.2.pyc
 tests/test_spectral/__pycache__/__init__.cpython-314.pyc
 tests/test_spectral/__pycache__/test_fft.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/evaluation/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/evaluation/__pycache__/evaluator.cpython-314.pyc
+src/quality_tool/evaluation/__pycache__/thresholding.cpython-314.pyc
+tests/test_evaluation/__pycache__/__init__.cpython-314.pyc
+tests/test_evaluation/__pycache__/test_evaluator.cpython-314-pytest-9.0.2.pyc
+tests/test_evaluation/__pycache__/test_thresholding.cpython-314-pytest-9.0.2.pyc
