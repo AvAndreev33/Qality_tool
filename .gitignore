@@ -30,3 +30,17 @@ tests/test_envelope/__pycache__/test_registry.cpython-314-pytest-9.0.2.pyc
 tests/test_preprocessing/__pycache__/__init__.cpython-314.pyc
 tests/test_preprocessing/__pycache__/test_basic.cpython-314-pytest-9.0.2.pyc
 tests/test_preprocessing/__pycache__/test_roi.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/metrics/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/metrics/__pycache__/base.cpython-314.pyc
+src/quality_tool/metrics/__pycache__/registry.cpython-314.pyc
+src/quality_tool/metrics/baseline/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/metrics/baseline/__pycache__/fringe_visibility.cpython-314.pyc
+src/quality_tool/metrics/baseline/__pycache__/power_band_ratio.cpython-314.pyc
+src/quality_tool/metrics/baseline/__pycache__/snr.cpython-314.pyc
+src/quality_tool/spectral/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/spectral/__pycache__/fft.cpython-314.pyc
+tests/test_metrics/__pycache__/__init__.cpython-314.pyc
+tests/test_metrics/__pycache__/test_baseline_metrics.cpython-314-pytest-9.0.2.pyc
+tests/test_metrics/__pycache__/test_registry.cpython-314-pytest-9.0.2.pyc
+tests/test_spectral/__pycache__/__init__.cpython-314.pyc
+tests/test_spectral/__pycache__/test_fft.cpython-314-pytest-9.0.2.pyc

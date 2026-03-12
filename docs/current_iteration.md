@@ -2,172 +2,262 @@
 
 ## Iteration name
 
-Preprocessing + ROI + Envelope scaffold
+Metric interface + spectral support + first baseline metrics
 
 ## Goal
 
-Implement the next foundational layer of the project:
-- explicit preprocessing functions
-- ROI extraction
-- envelope interface
-- envelope registry
-- first envelope method
+Introduce the metric layer of the system together with the first shared spectral representation.
+
+This iteration implements:
+- metric interface
+- metric registry
+- shared FFT / spectrum support
+- first baseline metrics:
+  - fringe visibility
+  - SNR
+  - power band ratio
 - tests for all of the above
 
-This iteration is about preparing the signal-processing layer that future metrics will use.
+This iteration establishes the first real quality-analysis methods and prepares the project for full-image evaluation in the next step.
+
+---
 
 ## Why this iteration matters
 
 The project is intended to evolve into a modular WLI research workbench.
 
-That means metrics should not be developed in isolation.
-Before implementing actual quality metrics, the project needs a clean and extensible way to:
-- preprocess signals,
-- crop local signal regions,
-- compute envelope representations,
-- compare different preprocessing and envelope strategies later.
+That means metrics should not be implemented as isolated one-off functions.
+Before building the full evaluation pipeline, the project needs:
 
-This iteration lays that foundation.
+- a common metric interface
+- a registry for metrics
+- a shared way to compute and reuse spectral representations
+- a first small set of meaningful baseline quality criteria
+
+This iteration creates the first real metric layer while keeping future extensibility in mind.
+
+---
 
 ## In scope
 
-### Preprocessing basics
-Implement simple explicit preprocessing functions for single 1D signals.
+### Metric interface
 
-Initial supported operations:
-- baseline subtraction
-- amplitude normalization
-- optional simple smoothing
+Implement the common metric interface.
 
-Keep these as simple standalone functions or a very light structured API.
+Location:
+- `src/quality_tool/metrics/base.py`
 
 Requirements:
-- input: 1D signal
-- output: processed 1D signal of the same length
-- deterministic behavior
-- no in-place modification of the original input
-- clear validation for invalid inputs
+- define a common protocol or lightweight base class
+- input:
+  - `signal`
+  - optional `z_axis`
+  - optional `envelope`
+  - optional `context`
+- output:
+  - `MetricResult`
 
-### ROI extraction
-Implement explicit ROI extraction for a single signal.
+Rules:
+- metrics must not modify input arrays in-place
+- metrics must not silently apply unrelated preprocessing
+- metrics should fail gracefully using `valid=False` when appropriate
 
-Required behavior:
-- input: 1D signal
-- parameter: `segment_size`
-- parameter: centering mode
+---
 
-For this iteration:
-- support centering mode `raw_max`
+### Metric registry
 
-Behavior:
-- extract a segment of length `segment_size`
-- center it around the maximum of the raw signal
-- handle boundaries clearly and deterministically
+Implement a simple metric registry.
+
+Location:
+- `src/quality_tool/metrics/registry.py`
+
+Capabilities:
+- register metrics by name
+- retrieve metric by name
+- list available metrics
+
+Keep the registry simple and explicit.
+
+---
+
+### Shared FFT / spectrum support
+
+Implement a shared spectral helper module.
+
+Recommended location:
+- `src/quality_tool/spectral/fft.py`
+
+Purpose:
+- compute FFT-derived representations used by multiple metrics
+- keep FFT logic out of individual metric implementations
+- prepare for future reuse by evaluator and visualization code
 
 Requirements:
-- output must always have length `segment_size`
-- do not silently return malformed segments
-- fail clearly or handle edge cases explicitly
+- provide a simple function or small API to compute spectral representation from a 1D signal
+- return a consistent result structure, for example:
+  - frequencies
+  - complex spectrum
+  - magnitude / power spectrum
+- keep it simple, readable, and testable
 
-### Envelope interface
-Implement a common envelope interface in:
-- `src/quality_tool/envelope/base.py`
+Important architectural note:
+- this iteration does not need a full caching system
+- but the design should allow future reuse of precomputed FFT results through `context`
 
-Use the architecture as source of truth.
+Metrics that need spectral information should be able to:
+- compute it internally if absent
+- or use precomputed spectral data from `context` if available
 
-The interface should support:
-- input signal
-- optional z-axis
-- optional context
-- output envelope with same length as input signal
+---
 
-### Envelope registry
-Implement a simple registry in:
-- `src/quality_tool/envelope/registry.py`
+### Baseline metrics
 
-It should allow:
-- registering named envelope methods
-- retrieving a method by name
-- listing available methods
+Implement the following baseline quality metrics.
 
-Keep it simple and explicit.
+#### 1. Fringe visibility
 
-### First envelope method
-Implement one first envelope method.
+Implement a signal-quality metric representing fringe visibility.
 
-Recommended initial choice:
-- analytic signal / Hilbert-based envelope
+Location suggestion:
+- `src/quality_tool/metrics/baseline/fringe_visibility.py`
 
-If that requires adding `scipy`, it is acceptable only if kept minimal and justified.
-If avoiding `scipy` is preferred for now, implement a simpler placeholder method only if it is still meaningful.
+Requirements:
+- define clearly how fringe visibility is computed
+- document the chosen formula in code docstring
+- return `MetricResult`
 
-The method must:
-- return an envelope with the same length as input
-- fit the common envelope interface
-- be testable
-- be usable later by metrics
+The first version should prefer a simple and interpretable definition.
+
+---
+
+#### 2. SNR
+
+Implement a signal-to-noise ratio metric.
+
+Location suggestion:
+- `src/quality_tool/metrics/baseline/snr.py`
+
+Requirements:
+- define clearly what is treated as signal and what is treated as noise
+- document the chosen approximation in code docstring
+- return `MetricResult`
+
+The first version should prefer a simple and stable heuristic rather than a complex estimator.
+
+---
+
+#### 3. Power band ratio
+
+Implement a spectral metric based on power ratio between selected frequency bands.
+
+Location suggestion:
+- `src/quality_tool/metrics/baseline/power_band_ratio.py`
+
+Requirements:
+- use the shared FFT / spectrum support
+- define clearly which band is considered numerator and denominator
+- allow future configurability of band limits
+- document the chosen formula in code docstring
+- return `MetricResult`
+
+This metric should be designed so that future variants can reuse the same spectral helper.
+
+---
+
+### Metric outputs
+
+All metrics must return `MetricResult`.
+
+Fields:
+- `score`
+- optional `features`
+- `valid`
+- optional `notes`
+
+Useful intermediate values may be placed into `features` when appropriate.
+
+---
 
 ### Tests
+
 Add tests for:
-- baseline subtraction
-- normalization
-- smoothing if implemented
-- ROI extraction with `raw_max`
-- ROI boundary handling
-- envelope registry behavior
-- first envelope method output shape and basic behavior
+- metric registry behavior
+- FFT / spectrum helper behavior
+- each baseline metric on small synthetic signals
+- correct `MetricResult` output structure
+- graceful handling of invalid or ambiguous cases
+- use of precomputed spectral data from `context` where applicable
+
+Tests should remain small, synthetic, and deterministic.
+
+---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- actual quality metrics
-- metric registry
-- evaluator
+- full-image evaluation
+- metric map creation
 - thresholding
 - visualization
-- export changes
+- export
 - synthetic signals
-- benchmark workflows
-- multi-step experiment configs
+- experiment configs
+- full FFT caching/orchestration across the whole pipeline
+
+A full shared-computation strategy will be handled later in evaluator-level logic.
+
+---
 
 ## File targets
 
-Expected modules to create:
+Expected modules:
 
-- `src/quality_tool/preprocessing/basic.py`
-- `src/quality_tool/preprocessing/roi.py`
-- `src/quality_tool/envelope/base.py`
-- `src/quality_tool/envelope/registry.py`
-- `src/quality_tool/envelope/analytic.py`
+- `src/quality_tool/metrics/base.py`
+- `src/quality_tool/metrics/registry.py`
 
-Expected tests to create:
+- `src/quality_tool/spectral/__init__.py`
+- `src/quality_tool/spectral/fft.py`
 
-- `tests/test_preprocessing/test_basic.py`
-- `tests/test_preprocessing/test_roi.py`
-- `tests/test_envelope/test_registry.py`
-- `tests/test_envelope/test_analytic.py`
+- `src/quality_tool/metrics/baseline/fringe_visibility.py`
+- `src/quality_tool/metrics/baseline/snr.py`
+- `src/quality_tool/metrics/baseline/power_band_ratio.py`
+
+Expected tests:
+
+- `tests/test_metrics/test_registry.py`
+- `tests/test_metrics/test_baseline_metrics.py`
+- `tests/test_spectral/test_fft.py`
 
 Add `__init__.py` files where needed.
 
+---
+
 ## Implementation preferences
 
+- keep formulas explicit and documented
 - keep code simple and readable
-- prefer explicit functions over overengineered abstractions
-- no hidden preprocessing inside unrelated modules
-- no in-place mutation of input arrays
-- validate signal dimensionality clearly
-- keep extension paths obvious for future methods
+- prefer clear heuristics over premature sophistication
+- separate shared FFT logic from metric implementations
+- design metrics so they can later consume precomputed derived data through `context`
+- avoid introducing a heavy caching framework in this iteration
+
+---
 
 ## Definition of done
 
-This iteration is done when:
-- preprocessing basics exist and are tested
-- ROI extraction exists and is tested
-- envelope interface exists
-- envelope registry exists and works
-- one envelope method exists and is tested
-- all created code is aligned with `docs/architecture.md`
-- no metric logic is implemented yet
+This iteration is complete when:
+- metric interface exists
+- metric registry works
+- shared FFT / spectrum helper exists
+- fringe visibility metric exists
+- SNR metric exists
+- power band ratio metric exists
+- spectral helper is tested
+- baseline metrics are tested
+- metrics return `MetricResult`
+- code remains aligned with `docs/architecture.md`
+
+---
 
 ## Expected assistant workflow
 
