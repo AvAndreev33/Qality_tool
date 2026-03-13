@@ -6,14 +6,11 @@ status bar) and wires user actions to backend calls.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -43,7 +40,14 @@ from quality_tool.metrics.registry import MetricRegistry
 
 
 def _build_default_registry() -> MetricRegistry:
-    """Create a registry populated with the baseline metrics."""
+    """Create a registry populated with the baseline metrics.
+
+    Note: this duplicates the list of baseline metrics because the
+    backend ``default_registry`` (in ``metrics.registry``) is currently
+    empty — nothing populates it at import time.  Once the backend
+    provides a pre-populated default registry, the GUI should reuse it
+    instead of maintaining its own copy.
+    """
     registry = MetricRegistry()
     registry.register(FringeVisibility())
     registry.register(SNR())
@@ -235,13 +239,7 @@ class MainWindow(QMainWindow):
             self._status.showMessage("No map to compare")
             return
 
-        is_mask = data.dtype == bool or (
-            self._map_combo.currentText() == "threshold_mask"
-        )
-        if is_mask:
-            win = CompareWindow(data.astype(bool), title=title)
-        else:
-            win = CompareWindow(data, title=title)
+        win = CompareWindow(data, title=title)
         win.show()
         self._compare_windows.append(win)
 

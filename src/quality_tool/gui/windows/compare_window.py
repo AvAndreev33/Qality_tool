@@ -8,6 +8,7 @@ from __future__ import annotations
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 
@@ -23,9 +24,7 @@ class CompareWindow(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"Compare — {title}")
-        self.setAttribute(
-            __import__("PySide6").QtCore.Qt.WidgetAttribute.WA_DeleteOnClose,
-        )
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.resize(500, 450)
 
         figure = Figure(tight_layout=True)

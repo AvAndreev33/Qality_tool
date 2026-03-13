@@ -485,3 +485,8 @@ tests/test_gui/__pycache__/conftest.cpython-314-pytest-9.0.2.pyc
 tests/test_gui/__pycache__/test_main_window.cpython-314-pytest-9.0.2.pyc
 tests/test_gui/__pycache__/test_widgets.cpython-314-pytest-9.0.2.pyc
 tests/test_io/__pycache__/test_real_data_integration.cpython-314-pytest-9.0.2.pyc
+testing_data/test.txt
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/wli_research_workbench.iml
+.idea/vcs.xml
+.claude/settings.local.json

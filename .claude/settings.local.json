@@ -9,7 +9,8 @@
       "Bash(py -m pip install -e \".[dev]\")",
       "Bash(py -m pip install pytest-qt)",
       "Bash(py -m pytest tests/test_gui/ -v --tb=short)",
-      "Bash(py -m pytest tests/ -v --tb=short)"
+      "Bash(py -m pytest tests/ -v --tb=short)",
+      "Bash(py -m pytest tests/test_gui/test_widgets.py::TestMapViewer::test_set_binary_mask -v --tb=short)"
     ]
   }
 }

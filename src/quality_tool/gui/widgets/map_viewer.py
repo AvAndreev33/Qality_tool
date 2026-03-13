@@ -67,11 +67,8 @@ class MapViewer(QWidget):
             Matplotlib colormap name.
         """
         self._data = data
+        self._remove_colorbar()
         self._ax.clear()
-
-        if self._colorbar is not None:
-            self._colorbar.remove()
-            self._colorbar = None
 
         self._image = self._ax.imshow(
             data, origin="upper", aspect="equal", cmap=cmap,
@@ -83,16 +80,14 @@ class MapViewer(QWidget):
 
     def set_binary_mask(self, mask: np.ndarray, title: str = "") -> None:
         """Display a boolean mask (green = kept, red = rejected)."""
-        rgb = np.zeros((*mask.shape, 3), dtype=float)
-        rgb[mask] = [0.2, 0.7, 0.3]
-        rgb[~mask] = [0.8, 0.2, 0.2]
+        bool_mask = mask.astype(bool)
+        rgb = np.zeros((*bool_mask.shape, 3), dtype=float)
+        rgb[bool_mask] = [0.2, 0.7, 0.3]
+        rgb[~bool_mask] = [0.8, 0.2, 0.2]
 
-        self._data = mask.astype(float)
+        self._data = bool_mask
+        self._remove_colorbar()
         self._ax.clear()
-
-        if self._colorbar is not None:
-            self._colorbar.remove()
-            self._colorbar = None
 
         self._image = self._ax.imshow(rgb, origin="upper", aspect="equal")
         self._ax.set_title(title)
@@ -102,12 +97,7 @@ class MapViewer(QWidget):
     def clear(self) -> None:
         """Clear the viewer."""
         self._data = None
-        if self._colorbar is not None:
-            try:
-                self._colorbar.remove()
-            except (AttributeError, ValueError):
-                pass
-            self._colorbar = None
+        self._remove_colorbar()
         self._ax.clear()
         self._image = None
         self._marker = None
@@ -131,6 +121,20 @@ class MapViewer(QWidget):
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _remove_colorbar(self) -> None:
+        """Safely remove the current colorbar, if any.
+
+        Must be called **before** ``self._ax.clear()`` because
+        ``ax.clear()`` invalidates the subplot spec that the colorbar's
+        axes depend on.
+        """
+        if self._colorbar is not None:
+            try:
+                self._colorbar.remove()
+            except (AttributeError, ValueError):
+                pass
+            self._colorbar = None
 
     def _on_click(self, event) -> None:
         """Handle matplotlib click and emit pixel_selected."""

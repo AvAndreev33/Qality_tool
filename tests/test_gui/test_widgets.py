@@ -35,6 +35,7 @@ class TestMapViewer:
         mask[0, 0] = False
         viewer.set_binary_mask(mask, title="test mask")
         assert viewer._data is not None
+        assert viewer._data.dtype == bool
 
     def test_value_at(self):
         viewer = MapViewer()
@@ -73,6 +74,20 @@ class TestMapViewer:
 
         assert len(received) == 1
         assert received[0] == (3, 5)
+
+    def test_set_map_twice(self):
+        """Regression: second set_map must not crash on colorbar removal."""
+        viewer = MapViewer()
+        viewer.set_map(np.random.rand(6, 6), title="first")
+        viewer.set_map(np.random.rand(6, 6), title="second")
+        assert viewer._ax.get_title() == "second"
+
+    def test_set_map_then_binary_mask(self):
+        """Regression: switching from score map to mask must not crash."""
+        viewer = MapViewer()
+        viewer.set_map(np.random.rand(6, 6), title="scores")
+        viewer.set_binary_mask(np.ones((6, 6), dtype=bool), title="mask")
+        assert viewer._data.dtype == bool
 
     def test_clear(self):
         viewer = MapViewer()
