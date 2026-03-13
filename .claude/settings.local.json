@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pip install -e \".[dev]\")",
+      "Bash(where py:*)",
+      "Bash(where python3:*)",
+      "Read(//c/Users/avand/AppData/Local/Programs/Python/**)",
+      "Bash(ls C:/Python*/python.exe)",
+      "Bash(py -m pip install -e \".[dev]\")",
+      "Bash(py -m pip install pytest-qt)",
+      "Bash(py -m pytest tests/test_gui/ -v --tb=short)",
+      "Bash(py -m pytest tests/ -v --tb=short)"
+    ]
+  }
+}

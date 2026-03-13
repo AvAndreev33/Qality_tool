@@ -2,255 +2,335 @@
 
 ## Iteration name
 
-Evaluator + metric map + thresholding
+First GUI slice — main window + map viewer + signal inspector
 
 ## Goal
 
-Implement the first full evaluation pipeline for the project.
+Implement the first usable GUI slice for the project.
 
-This iteration should make it possible to:
-- take a loaded `SignalSet`
-- optionally preprocess each signal
-- optionally extract ROI
-- optionally compute envelope
-- evaluate one metric over the full dataset
-- collect results into `MetricMapResult`
-- apply thresholding
-- obtain a 2D binary mask
+This iteration should create a minimal desktop GUI that can:
+- load a dataset,
+- compute a selected metric,
+- display one main 2D result map,
+- let the user click a pixel,
+- display the signal of that pixel in the lower plot,
+- switch between currently available map types,
+- open the current map in a separate comparison window,
+- show dataset and run information on demand.
 
-This is the first iteration where the system becomes a working quality-analysis pipeline.
+This should be the first thin GUI layer over the existing backend.
 
 ---
 
 ## Why this iteration matters
 
-The previous iterations implemented:
+The backend now has a working end-to-end pipeline:
 - data loading
-- preprocessing scaffold
-- ROI extraction
-- envelope support
-- spectral support
-- baseline metrics
+- metadata parsing
+- z-axis handling
+- preprocessing / ROI / envelope / spectral support
+- metrics
+- evaluator
+- thresholding
 
-But these pieces are still separate.
+The next useful step is to make this pipeline conveniently inspectable through a minimal interactive GUI.
 
-This iteration connects them into one coherent evaluation flow.
+This iteration is not about building the full future research workbench.
+It is about building the first clean and extensible visual shell around the current backend.
 
-It is the first real end-to-end pipeline for quality analysis on WLI signals.
+---
+
+## GUI framework
+
+Use the existing project direction based on **Python + Qt**.
+
+Preferred implementation:
+- PySide6 if already available or easy to add cleanly
+- PyQt is acceptable only if that is the existing preferred stack in the repository
+
+Keep the GUI implementation simple and explicit.
+
+Do not build a custom framework around Qt.
 
 ---
 
 ## In scope
 
-### Evaluator
+### Main application window
 
-Implement the main evaluator module.
-
-Location:
-- `src/quality_tool/evaluation/evaluator.py`
+Implement one main application window.
 
 Responsibilities:
-- accept a `SignalSet`
-- accept one metric instance
-- optionally accept preprocessing settings
-- optionally accept ROI settings
-- optionally accept envelope method
-- iterate over all pixel signals
-- evaluate the metric for each signal
-- return `MetricMapResult`
+- provide the central GUI layout
+- host the main map viewer
+- host the signal inspector
+- provide the top toolbar / action bar
+- provide a status bar
+- connect UI actions to backend calls
+
+The layout should follow `docs/gui_spec.md`.
+
+---
+
+### Main layout
+
+The main window must contain:
+- a top toolbar / action bar
+- a large central 2D map viewer
+- a lower signal inspector plot
+- a status bar
+
+No permanent left-side information or control panel should be added in this iteration.
+
+---
+
+### Dataset loading
+
+Implement GUI-driven dataset loading.
 
 Requirements:
-- preserve image layout
-- produce `score_map` with shape `(H, W)`
-- produce `valid_map` with shape `(H, W)`
-- collect feature maps where possible
-- return metadata describing evaluation settings
+- user can trigger dataset loading from the GUI
+- loaded data must go through the existing backend loaders
+- after loading, the GUI must store the active `SignalSet`
+- status bar should reflect successful load or loading failure
 
-The evaluator should be explicit and readable.
-Do not overengineer it.
+Keep this simple and backend-driven.
 
 ---
 
-### Preprocessing integration
+### Metric selection
 
-The evaluator must support optional preprocessing before metric evaluation.
-
-For this iteration, support integration with the preprocessing functions already implemented.
-
-The evaluator should make preprocessing order explicit.
-
-Recommended order for this iteration:
-1. start from raw signal
-2. optionally apply preprocessing
-3. optionally apply ROI extraction
-4. optionally compute envelope
-5. evaluate metric
-
-This order should be documented in code.
-
----
-
-### ROI integration
-
-The evaluator must support optional ROI extraction.
+Provide a visible metric selector in the toolbar.
 
 Requirements:
-- if ROI extraction is enabled, apply it before metric evaluation
-- if ROI extraction is enabled and envelope is also enabled, compute envelope on the ROI signal that is actually passed to the metric
-- make this behavior explicit in metadata / evaluator docstring
+- populate it from the currently available metric registry or the current set of baseline metrics
+- allow the user to choose the active metric before computation
+
+Do not add advanced parameter editing yet.
 
 ---
 
-### Envelope integration
+### Compute action
 
-The evaluator must support optional envelope computation.
+Provide a `Compute` action in the toolbar.
 
 Requirements:
-- envelope method should be optional
-- if provided, compute envelope for each evaluated signal
-- pass envelope into `metric.evaluate(...)`
-- if not provided, pass `None`
+- use the current dataset
+- use the currently selected metric
+- run the existing backend evaluator
+- store the resulting `MetricMapResult`
+- make the resulting map available to the main map viewer
+- allow threshold mask display if thresholding is already available and practical to expose
 
-Do not add automatic hidden envelope behavior inside the evaluator beyond this.
+Keep the action explicit.
 
----
-
-### Shared spectral reuse through context
-
-The evaluator should support simple context-based reuse of derived signal representations.
-
-For this iteration:
-- if a metric may use spectral data, the evaluator may precompute FFT-derived data once per signal and pass it through `context`
-- keep this simple
-- do not add a heavy caching framework
-
-A lightweight pattern is enough, for example:
-- build a `context` dict per signal
-- include precomputed `spectral_result` when needed
-
-This should remain readable and local.
+No background worker system is required in this iteration unless absolutely necessary.
 
 ---
 
-### MetricMapResult assembly
+### Main map viewer widget
 
-The evaluator must assemble full-image outputs into `MetricMapResult`.
+Implement a dedicated map viewer widget.
+
+Responsibilities:
+- display one 2D map
+- support mouse click pixel selection
+- visually indicate the selected pixel
+- notify the main window about the selected pixel coordinates
 
 Requirements:
-- `score_map.shape == (H, W)`
-- `valid_map.shape == (H, W)`
-- `feature_maps` should contain `(H, W)` arrays where possible
-- invalid metric results must be reflected in `valid_map`
-- choose a clear convention for invalid score values and keep it consistent
+- support at least:
+  - quality map
+  - threshold mask
+- be implemented as a generic 2D map viewer rather than as a hardcoded “quality map widget”
 
-Document that convention in code.
+Do not overengineer zoom/pan tools in this iteration unless they come almost for free.
 
 ---
 
-### Thresholding
+### Signal inspector widget
 
-Implement thresholding support.
+Implement a lower signal plot widget.
 
-Location:
-- `src/quality_tool/evaluation/thresholding.py`
+Responsibilities:
+- show the signal corresponding to the selected pixel
+- update when the selected pixel changes
+- use the active dataset and its z-axis
+- show at least the raw signal in this iteration
 
 Requirements:
-- accept a `MetricMapResult`
-- accept a scalar threshold
-- accept a keep rule such as:
-  - `score >= threshold`
-  - `score <= threshold`
-- return `ThresholdResult`
+- it should work directly with the currently loaded `SignalSet`
+- it should not duplicate signal-processing logic from the backend
+- it should stay simple and ready for future overlays
 
-Behavior:
-- output mask must have shape `(H, W)`
-- invalid pixels from `valid_map` must be handled explicitly and consistently
-- compute simple summary stats, e.g.:
-  - number of valid pixels
-  - number of kept pixels
-  - kept fraction
-
-Keep thresholding logic simple and explicit.
+No envelope / ROI / spectrum overlays are required in this iteration.
 
 ---
 
-### Tests
+### Map type switching
 
-Add tests for:
-- evaluator output shape
-- evaluator on a small synthetic `SignalSet`
-- evaluator with and without preprocessing
-- evaluator with and without ROI
-- evaluator with and without envelope
-- evaluator with metric that uses spectral context
-- proper assembly of `MetricMapResult`
-- thresholding with both keep rules
-- thresholding behavior with invalid pixels
+Add a map type selector to the toolbar.
 
-Tests should stay synthetic, small, and deterministic.
+For this iteration, it should support switching between available currently computed maps such as:
+- metric score map
+- threshold mask, if available
+
+The switching logic should remain simple and explicit.
+
+---
+
+### Comparison window
+
+Implement the ability to open the currently displayed map in a separate window.
+
+Requirements:
+- the comparison window should display a fixed snapshot of the current map
+- it should not replace the main window
+- it should allow the user to keep one result visible while continuing work in the main window
+
+Keep this as a lightweight viewer window.
+
+---
+
+### Info action
+
+Implement an `Info` action.
+
+Requirements:
+- open a dialog or secondary window on demand
+- show useful dataset and current run information, such as:
+  - dataset source
+  - width / height
+  - signal length
+  - whether metadata was found
+  - z-axis mode
+  - active metric
+  - current map type
+- keep it read-only
+
+This replaces the idea of a permanent info panel.
+
+---
+
+### Status bar
+
+Implement a simple status bar.
+
+It should display compact information such as:
+- load / compute status
+- selected pixel coordinates
+- value at the selected pixel
+- current metric
+- current map type
+- simple error messages where appropriate
+
+Keep it lightweight.
+
+---
+
+### Backend integration
+
+The GUI must use existing backend logic for:
+- loading datasets
+- evaluating metrics
+- thresholding
+- retrieving selected-pixel signals
+
+Do not reimplement backend logic inside GUI widgets.
+
+The GUI must remain a thin orchestration and visualization layer.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- visualization
-- export
-- multi-metric comparison
-- experiment manifests
-- synthetic signals
-- benchmark workflows
-- automatic optimization of thresholds
+- advanced settings dialogs for preprocessing / ROI / envelope
+- histogram window
+- multi-metric dashboard
+- experiment manager
+- batch comparison UI
+- synthetic-data UI
+- height map workflow
+- advanced export UI
+- background job system
+- docking system
+- full workspace persistence
 
-Keep this iteration focused on one-metric full-dataset evaluation.
+Keep the first GUI iteration narrow and usable.
 
 ---
 
 ## File targets
 
-Expected modules:
+Expected modules to create:
 
-- `src/quality_tool/evaluation/evaluator.py`
-- `src/quality_tool/evaluation/thresholding.py`
+- `src/quality_tool/gui/__init__.py`
+- `src/quality_tool/gui/app.py`
+- `src/quality_tool/gui/main_window.py`
+- `src/quality_tool/gui/widgets/__init__.py`
+- `src/quality_tool/gui/widgets/map_viewer.py`
+- `src/quality_tool/gui/widgets/signal_inspector.py`
+- `src/quality_tool/gui/windows/__init__.py`
+- `src/quality_tool/gui/windows/compare_window.py`
+- `src/quality_tool/gui/dialogs/__init__.py`
+- `src/quality_tool/gui/dialogs/info_dialog.py`
 
-Expected tests:
+Optional helper modules may be added if truly needed, but keep structure minimal.
 
-- `tests/test_evaluation/test_evaluator.py`
-- `tests/test_evaluation/test_thresholding.py`
+---
 
-You may add small helper utilities inside `evaluation/` if truly needed, but avoid unnecessary abstraction.
+## Testing expectations
+
+Add at least minimal tests where practical.
+
+Preferred focus:
+- widget creation smoke tests
+- basic map viewer pixel-selection logic
+- signal inspector update logic for selected pixel
+- main-window wiring for load / compute flow where feasible without overcomplicating tests
+
+If full GUI interaction testing requires extra heavy infrastructure, keep automated tests minimal and reliable.
+
+The priority is a working, clean first GUI slice.
 
 ---
 
 ## Implementation preferences
 
-- keep the evaluator explicit and easy to read
-- prefer a straightforward nested loop over premature optimization
-- keep evaluation order explicit
-- keep context construction local and understandable
-- keep invalid-result handling explicit
-- avoid hidden auto-magic behavior
+- keep the GUI thin
+- keep the code simple and readable
+- prefer explicit signal-slot connections
+- avoid large controller abstractions
+- avoid duplicating backend logic
+- keep widgets focused on display and interaction
+- keep the main map viewer generic
+- keep the signal inspector general enough for later overlays
+- prefer a stable main layout over feature richness
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- evaluator exists
-- evaluator can process a full `SignalSet`
-- evaluator returns valid `MetricMapResult`
-- thresholding exists
-- thresholding returns valid `ThresholdResult`
-- tests exist and pass
-- code remains aligned with `docs/architecture.md`
+- the GUI application can be launched
+- a dataset can be loaded through the GUI
+- a metric can be selected
+- the current metric can be computed
+- the resulting map can be displayed in the main map viewer
+- clicking a pixel updates the lower signal inspector
+- current map type can be switched
+- the current map can be opened in a separate comparison window
+- an info dialog can be opened on demand
+- the GUI uses the existing backend rather than duplicating logic
 
 ---
 
 ## Expected assistant workflow
 
-1. read `CLAUDE.md` and the docs
-2. summarize understanding of this iteration
+1. read `CLAUDE.md` and the docs, including `docs/gui_spec.md`
+2. summarize the planned first GUI slice
 3. propose a short implementation plan
 4. implement only this iteration
-5. add tests
-6. summarize changes and open follow-up items
+5. add lightweight tests where practical
+6. summarize created files, modified files, and any limitations
