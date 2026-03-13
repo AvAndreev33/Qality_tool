@@ -10,7 +10,13 @@
       "Bash(py -m pip install pytest-qt)",
       "Bash(py -m pytest tests/test_gui/ -v --tb=short)",
       "Bash(py -m pytest tests/ -v --tb=short)",
-      "Bash(py -m pytest tests/test_gui/test_widgets.py::TestMapViewer::test_set_binary_mask -v --tb=short)"
+      "Bash(py -m pytest tests/test_gui/test_widgets.py::TestMapViewer::test_set_binary_mask -v --tb=short)",
+      "Bash(python -m pytest tests/test_gui/ -v)",
+      "Bash(ls .venv/Scripts/python*)",
+      "Bash(ls .venv/bin/python*)",
+      "Bash(pip show:*)",
+      "Bash(ls *.toml pyproject.toml setup.py setup.cfg)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_gui/ -v)"
     ]
   }
 }

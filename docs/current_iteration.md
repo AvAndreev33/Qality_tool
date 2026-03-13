@@ -2,334 +2,302 @@
 
 ## Iteration name
 
-First GUI slice — main window + map viewer + signal inspector
+GUI extension — multi-metric selection + map session state + threshold controls
 
 ## Goal
 
-Implement the first usable GUI slice for the project.
+Extend the first GUI slice into a more useful analysis interface.
 
-This iteration should create a minimal desktop GUI that can:
-- load a dataset,
-- compute a selected metric,
-- display one main 2D result map,
-- let the user click a pixel,
-- display the signal of that pixel in the lower plot,
-- switch between currently available map types,
-- open the current map in a separate comparison window,
-- show dataset and run information on demand.
+This iteration should add:
+- selection of multiple metrics through a dedicated dialog
+- computation of multiple selected metrics in one run
+- storage of computed metric results in the current GUI session
+- map selector behavior based on actually available computed maps
+- threshold controls tied to the currently displayed map
+- masked map display without overwriting the original score map
 
-This should be the first thin GUI layer over the existing backend.
+This iteration should keep the GUI minimal while making it much more useful for real comparison work.
 
 ---
 
 ## Why this iteration matters
 
-The backend now has a working end-to-end pipeline:
-- data loading
-- metadata parsing
-- z-axis handling
-- preprocessing / ROI / envelope / spectral support
-- metrics
-- evaluator
-- thresholding
+The current GUI already supports:
+- loading a dataset
+- selecting one metric
+- computing one result
+- displaying one map
+- selecting a pixel
+- displaying its signal
+- opening comparison windows
+- showing info on demand
 
-The next useful step is to make this pipeline conveniently inspectable through a minimal interactive GUI.
+That is a good first slice.
 
-This iteration is not about building the full future research workbench.
-It is about building the first clean and extensible visual shell around the current backend.
+The next practical need is to make the GUI suitable for comparing multiple metrics and interactively thresholding the currently displayed map.
 
----
-
-## GUI framework
-
-Use the existing project direction based on **Python + Qt**.
-
-Preferred implementation:
-- PySide6 if already available or easy to add cleanly
-- PyQt is acceptable only if that is the existing preferred stack in the repository
-
-Keep the GUI implementation simple and explicit.
-
-Do not build a custom framework around Qt.
+This is a natural step toward the intended engineering workflow of the project.
 
 ---
 
 ## In scope
 
-### Main application window
+### Metric selection dialog
 
-Implement one main application window.
-
-Responsibilities:
-- provide the central GUI layout
-- host the main map viewer
-- host the signal inspector
-- provide the top toolbar / action bar
-- provide a status bar
-- connect UI actions to backend calls
-
-The layout should follow `docs/gui_spec.md`.
-
----
-
-### Main layout
-
-The main window must contain:
-- a top toolbar / action bar
-- a large central 2D map viewer
-- a lower signal inspector plot
-- a status bar
-
-No permanent left-side information or control panel should be added in this iteration.
-
----
-
-### Dataset loading
-
-Implement GUI-driven dataset loading.
+Replace the single metric dropdown workflow with a dedicated metric-selection dialog.
 
 Requirements:
-- user can trigger dataset loading from the GUI
-- loaded data must go through the existing backend loaders
-- after loading, the GUI must store the active `SignalSet`
-- status bar should reflect successful load or loading failure
+- add a `Metrics...` action or button
+- open a dialog listing all available metrics
+- allow selecting multiple metrics using checkboxes
+- preserve the currently selected metrics across dialog reopenings during the same session
 
-Keep this simple and backend-driven.
+Expected behavior:
+- after confirming the dialog, the GUI remembers which metrics are selected
+- the selected metrics become the set to compute when `Compute` is pressed
 
----
-
-### Metric selection
-
-Provide a visible metric selector in the toolbar.
-
-Requirements:
-- populate it from the currently available metric registry or the current set of baseline metrics
-- allow the user to choose the active metric before computation
-
-Do not add advanced parameter editing yet.
+This dialog should be simple and read-only with respect to metric parameters.
+No metric-specific parameter editing is required in this iteration.
 
 ---
 
-### Compute action
+### Multi-metric computation
 
-Provide a `Compute` action in the toolbar.
+Update the compute flow so that it can compute all selected metrics in one run.
 
 Requirements:
-- use the current dataset
-- use the currently selected metric
-- run the existing backend evaluator
-- store the resulting `MetricMapResult`
-- make the resulting map available to the main map viewer
-- allow threshold mask display if thresholding is already available and practical to expose
+- when `Compute` is pressed, compute all currently selected metrics
+- store their results in session state
+- do not discard previously computed results unless the dataset changes or recomputation replaces them
+- after computation, display the first selected metric by default
 
-Keep the action explicit.
-
+Keep the implementation simple and explicit.
 No background worker system is required in this iteration unless absolutely necessary.
 
 ---
 
-### Main map viewer widget
+### Session state for computed maps
 
-Implement a dedicated map viewer widget.
+Introduce explicit GUI session state for computed map results.
 
-Responsibilities:
-- display one 2D map
-- support mouse click pixel selection
-- visually indicate the selected pixel
-- notify the main window about the selected pixel coordinates
+At minimum, the GUI should keep track of:
+- the currently loaded dataset
+- the selected metric names
+- computed metric results by metric name
+- the currently displayed map name
+- threshold state for the currently displayed metric when applicable
+
+A simple structure is enough.
+Do not introduce a large state-management framework.
+
+---
+
+### Map selector behavior
+
+Redefine the `Map` selector so that it controls **which available computed map is displayed in the main viewer**.
 
 Requirements:
-- support at least:
-  - quality map
-  - threshold mask
-- be implemented as a generic 2D map viewer rather than as a hardcoded “quality map widget”
+- the map selector should list the names of metrics that have already been computed in the current session
+- selecting an item should switch the main viewer to that metric's score map
+- the selector must reflect actual session results, not hardcoded generic map labels
 
-Do not overengineer zoom/pan tools in this iteration unless they come almost for free.
+Examples:
+- `fringe_visibility`
+- `snr`
+- `power_band_ratio`
+
+Do not use `score_map` and `threshold_mask` as the primary selector entries anymore.
 
 ---
 
-### Signal inspector widget
+### Threshold controls
 
-Implement a lower signal plot widget.
-
-Responsibilities:
-- show the signal corresponding to the selected pixel
-- update when the selected pixel changes
-- use the active dataset and its z-axis
-- show at least the raw signal in this iteration
+Add explicit threshold controls for the currently displayed map.
 
 Requirements:
-- it should work directly with the currently loaded `SignalSet`
-- it should not duplicate signal-processing logic from the backend
-- it should stay simple and ready for future overlays
+- add a vertical threshold slider positioned near the colorbar / right side of the map area
+- add an `Apply` control below the slider
+- add a `Reset` control below the slider
+- the slider range should correspond to the current displayed score map range:
+  - minimum = map minimum
+  - maximum = map maximum
 
-No envelope / ROI / spectrum overlays are required in this iteration.
-
----
-
-### Map type switching
-
-Add a map type selector to the toolbar.
-
-For this iteration, it should support switching between available currently computed maps such as:
-- metric score map
-- threshold mask, if available
-
-The switching logic should remain simple and explicit.
+Behavior:
+- the threshold always applies to the currently displayed metric map
+- moving the slider updates the current threshold value
+- pressing `Apply` computes and stores a threshold result for the currently displayed map
+- pressing `Reset` removes the active threshold presentation for the currently displayed map
 
 ---
 
-### Comparison window
+### Threshold display model
 
-Implement the ability to open the currently displayed map in a separate window.
+The original score map must remain unchanged.
+
+Thresholding must be treated as a display/filter layer, not as destructive modification of the underlying metric result.
+
+This means:
+- the raw score map remains stored as-is
+- the threshold mask is stored separately
+- the map viewer displays either:
+  - the raw map,
+  - a masked version of the raw map,
+  - or the mask itself, depending on the chosen display mode
+
+Do not overwrite the original computed metric data.
+
+---
+
+### Masked map display
+
+Implement display support for thresholded visualization of the current map.
 
 Requirements:
-- the comparison window should display a fixed snapshot of the current map
-- it should not replace the main window
-- it should allow the user to keep one result visible while continuing work in the main window
+- after threshold `Apply`, the main viewer should show the thresholded view of the currently displayed map
+- the masking should always be applied relative to the original score map
+- changing the threshold and applying again should recompute from the original score map, not from a previously masked display
 
-Keep this as a lightweight viewer window.
+Keep the display logic simple and explicit.
 
 ---
 
-### Info action
+### Optional mask-only display
 
-Implement an `Info` action.
+If simple and clean to add in this iteration, support a lightweight way to view:
+- masked score map
+- binary mask only
+
+This may be implemented through:
+- a small display-mode selector,
+- a checkbox,
+- or another minimal UI control
+
+Only add this if it remains clean and does not overcomplicate the current iteration.
+
+If it is not clean, defer mask-only display to a later iteration.
+
+---
+
+### Main viewer updates
+
+Update the main map viewer integration so that it can:
+- show raw metric maps
+- show masked metric maps
+- optionally show binary masks if implemented
+- keep selected-pixel interaction working under all display modes
+
+Pixel selection behavior must remain stable and continue updating the signal inspector.
+
+---
+
+### Signal inspector continuity
+
+The signal inspector should continue to work from the loaded dataset and selected pixel.
 
 Requirements:
-- open a dialog or secondary window on demand
-- show useful dataset and current run information, such as:
-  - dataset source
-  - width / height
-  - signal length
-  - whether metadata was found
-  - z-axis mode
-  - active metric
-  - current map type
-- keep it read-only
-
-This replaces the idea of a permanent info panel.
+- selected pixel signal display must continue working regardless of which metric map is shown
+- threshold display must not break the signal inspector
+- pixel selection must remain tied to image coordinates, not to threshold state
 
 ---
 
-### Status bar
+### Status and info updates
 
-Implement a simple status bar.
+Update status / info behavior so that it reflects the new GUI state where useful.
 
-It should display compact information such as:
-- load / compute status
-- selected pixel coordinates
-- value at the selected pixel
-- current metric
-- current map type
-- simple error messages where appropriate
+Helpful examples:
+- current displayed metric
+- whether a threshold is currently active
+- current threshold value
+- number of computed maps currently available
 
-Keep it lightweight.
-
----
-
-### Backend integration
-
-The GUI must use existing backend logic for:
-- loading datasets
-- evaluating metrics
-- thresholding
-- retrieving selected-pixel signals
-
-Do not reimplement backend logic inside GUI widgets.
-
-The GUI must remain a thin orchestration and visualization layer.
+Keep this lightweight.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- advanced settings dialogs for preprocessing / ROI / envelope
-- histogram window
-- multi-metric dashboard
+- metric-specific parameter editing
+- advanced threshold rules beyond the current backend behavior
+- histogram view
+- multi-map dashboard in the main window
 - experiment manager
-- batch comparison UI
-- synthetic-data UI
-- height map workflow
-- advanced export UI
-- background job system
-- docking system
-- full workspace persistence
+- batch comparison tables
+- background task system
+- height-map workflow
+- synthetic-data workflow
+- benchmark UI
+- persistent workspace/session saving
 
-Keep the first GUI iteration narrow and usable.
+Keep this iteration focused on multi-metric usability and threshold interaction.
 
 ---
 
 ## File targets
 
-Expected modules to create:
+Expected existing modules to update:
 
-- `src/quality_tool/gui/__init__.py`
-- `src/quality_tool/gui/app.py`
 - `src/quality_tool/gui/main_window.py`
-- `src/quality_tool/gui/widgets/__init__.py`
 - `src/quality_tool/gui/widgets/map_viewer.py`
-- `src/quality_tool/gui/widgets/signal_inspector.py`
-- `src/quality_tool/gui/windows/__init__.py`
-- `src/quality_tool/gui/windows/compare_window.py`
-- `src/quality_tool/gui/dialogs/__init__.py`
-- `src/quality_tool/gui/dialogs/info_dialog.py`
 
-Optional helper modules may be added if truly needed, but keep structure minimal.
+Expected new modules to create:
+
+- `src/quality_tool/gui/dialogs/metrics_dialog.py`
+
+Optional helper module may be added if truly needed for simple GUI session state, but avoid building a full framework.
 
 ---
 
 ## Testing expectations
 
-Add at least minimal tests where practical.
+Add lightweight tests where practical.
 
 Preferred focus:
-- widget creation smoke tests
-- basic map viewer pixel-selection logic
-- signal inspector update logic for selected pixel
-- main-window wiring for load / compute flow where feasible without overcomplicating tests
+- metrics dialog selection behavior
+- map selector population from computed results
+- repeated compute with multiple metrics
+- threshold apply/reset logic on session state
+- masked display logic if testable without heavy GUI complexity
 
-If full GUI interaction testing requires extra heavy infrastructure, keep automated tests minimal and reliable.
+Keep automated tests reliable and lightweight.
 
-The priority is a working, clean first GUI slice.
+The main priority is a clean, working GUI behavior.
 
 ---
 
 ## Implementation preferences
 
-- keep the GUI thin
-- keep the code simple and readable
-- prefer explicit signal-slot connections
-- avoid large controller abstractions
-- avoid duplicating backend logic
-- keep widgets focused on display and interaction
+- keep the GUI thin and backend-driven
+- keep code simple and explicit
+- do not duplicate backend metric or thresholding logic
+- keep GUI state handling lightweight
+- prefer small helper methods over heavy controller abstractions
 - keep the main map viewer generic
-- keep the signal inspector general enough for later overlays
-- prefer a stable main layout over feature richness
+- keep the original metric results immutable from the GUI point of view
+- treat thresholding as display state, not data mutation
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- the GUI application can be launched
-- a dataset can be loaded through the GUI
-- a metric can be selected
-- the current metric can be computed
-- the resulting map can be displayed in the main map viewer
-- clicking a pixel updates the lower signal inspector
-- current map type can be switched
-- the current map can be opened in a separate comparison window
-- an info dialog can be opened on demand
-- the GUI uses the existing backend rather than duplicating logic
+- multiple metrics can be selected through a dialog
+- pressing `Compute` computes all selected metrics
+- computed metric results are stored in current GUI session state
+- the `Map` selector lists actual computed metric maps
+- selecting a map updates the main viewer correctly
+- threshold slider + apply/reset work on the currently displayed map
+- thresholding does not overwrite original score maps
+- signal inspector still updates correctly on pixel selection
+- the GUI remains aligned with `docs/gui_spec.md` and backend architecture
 
 ---
 
 ## Expected assistant workflow
 
 1. read `CLAUDE.md` and the docs, including `docs/gui_spec.md`
-2. summarize the planned first GUI slice
+2. summarize the planned GUI extension
 3. propose a short implementation plan
 4. implement only this iteration
 5. add lightweight tests where practical

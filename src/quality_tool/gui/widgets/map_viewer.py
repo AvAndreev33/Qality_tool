@@ -78,6 +78,54 @@ class MapViewer(QWidget):
         self._marker = None
         self._canvas.draw_idle()
 
+    def set_masked_map(
+        self,
+        data: np.ndarray,
+        mask: np.ndarray,
+        title: str = "",
+        cmap: str = "viridis",
+        vmin: float | None = None,
+        vmax: float | None = None,
+    ) -> None:
+        """Display a score map with rejected pixels shown in neutral gray.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            2-D score array of shape (H, W).
+        mask : np.ndarray
+            Boolean mask — True = kept, False = rejected.
+        title : str
+            Title shown above the map.
+        cmap : str
+            Matplotlib colormap name.
+        vmin, vmax : float | None
+            Color range anchored to the full original score map.
+        """
+        self._data = data  # keep original scores for value_at()
+        self._remove_colorbar()
+        self._ax.clear()
+
+        # Gray background first (lowest layer) for rejected pixels.
+        gray_bg = np.full((*data.shape, 3), 0.85)
+        self._ax.imshow(gray_bg, origin="upper", aspect="equal")
+
+        # Masked score map on top — masked (rejected) pixels are
+        # transparent, revealing the gray layer beneath.
+        masked = np.ma.array(data, mask=~mask)
+        self._image = self._ax.imshow(
+            masked,
+            origin="upper",
+            aspect="equal",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+        self._colorbar = self._figure.colorbar(self._image, ax=self._ax)
+        self._ax.set_title(title)
+        self._marker = None
+        self._canvas.draw_idle()
+
     def set_binary_mask(self, mask: np.ndarray, title: str = "") -> None:
         """Display a boolean mask (green = kept, red = rejected)."""
         bool_mask = mask.astype(bool)

@@ -11,13 +11,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSlider,
     QSpinBox,
     QSplitter,
     QStatusBar,
@@ -30,6 +33,7 @@ from quality_tool.core.models import MetricMapResult, SignalSet, ThresholdResult
 from quality_tool.evaluation.evaluator import evaluate_metric_map
 from quality_tool.evaluation.thresholding import apply_threshold
 from quality_tool.gui.dialogs.info_dialog import InfoDialog
+from quality_tool.gui.dialogs.metrics_dialog import MetricsDialog
 from quality_tool.gui.widgets.map_viewer import MapViewer
 from quality_tool.gui.widgets.signal_inspector import SignalInspector
 from quality_tool.gui.windows.compare_window import CompareWindow
@@ -37,6 +41,9 @@ from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
 from quality_tool.metrics.registry import MetricRegistry
+
+# Number of discrete steps the threshold slider is divided into.
+_SLIDER_STEPS = 1000
 
 
 def _build_default_registry() -> MetricRegistry:
@@ -63,18 +70,23 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Quality_tool")
         self.resize(900, 750)
 
-        # ----- state -------------------------------------------------
+        # ----- backend ---------------------------------------------------
         self._registry = _build_default_registry()
+
+        # ----- session state ---------------------------------------------
         self._signal_set: SignalSet | None = None
-        self._metric_map: MetricMapResult | None = None
-        self._threshold_result: ThresholdResult | None = None
+        self._selected_metrics: list[str] = []
+        self._computed_results: dict[str, MetricMapResult] = {}
+        self._threshold_states: dict[str, ThresholdResult | None] = {}
+        self._current_map_name: str | None = None
+        self._display_mode: str = "score"  # "score" | "masked" | "mask_only"
         self._compare_windows: list[CompareWindow] = []
 
-        # ----- widgets -----------------------------------------------
+        # ----- widgets ---------------------------------------------------
         self._map_viewer = MapViewer()
         self._signal_inspector = SignalInspector()
 
-        # ----- layout ------------------------------------------------
+        # ----- layout ----------------------------------------------------
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self._map_viewer)
         splitter.addWidget(self._signal_inspector)
@@ -82,15 +94,15 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
 
-        # ----- toolbar -----------------------------------------------
+        # ----- toolbar ---------------------------------------------------
         self._build_toolbar()
 
-        # ----- status bar --------------------------------------------
+        # ----- status bar ------------------------------------------------
         self._status = QStatusBar()
         self.setStatusBar(self._status)
         self._status.showMessage("Ready — load a dataset to begin")
 
-        # ----- connections -------------------------------------------
+        # ----- connections -----------------------------------------------
         self._map_viewer.pixel_selected.connect(self._on_pixel_selected)
 
     # ==================================================================
@@ -109,11 +121,10 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        # Metric selector
-        tb.addWidget(QLabel(" Metric: "))
-        self._metric_combo = QComboBox()
-        self._metric_combo.addItems(self._registry.list_metrics())
-        tb.addWidget(self._metric_combo)
+        # Metrics… dialog button
+        btn_metrics = QPushButton("Metrics…")
+        btn_metrics.clicked.connect(self._on_metrics_dialog)
+        tb.addWidget(btn_metrics)
 
         # Compute
         btn_compute = QPushButton("Compute")
@@ -122,26 +133,57 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        # Map type selector
+        # Map selector — populated from computed results
         tb.addWidget(QLabel(" Map: "))
         self._map_combo = QComboBox()
-        self._map_combo.addItems(["score_map"])
         self._map_combo.currentTextChanged.connect(self._on_map_switch)
         tb.addWidget(self._map_combo)
 
+        # Display mode selector
+        tb.addWidget(QLabel(" View: "))
+        self._display_combo = QComboBox()
+        self._display_combo.addItems(["score", "masked", "mask_only"])
+        self._display_combo.currentTextChanged.connect(
+            self._on_display_mode_changed,
+        )
+        tb.addWidget(self._display_combo)
+
         tb.addSeparator()
 
-        # Compare
+        # ----- threshold controls ----------------------------------------
+        self._thresh_slider = QSlider(Qt.Orientation.Horizontal)
+        self._thresh_slider.setRange(0, _SLIDER_STEPS)
+        self._thresh_slider.setFixedWidth(120)
+        self._thresh_slider.valueChanged.connect(self._on_slider_moved)
+
+        self._thresh_spin = QDoubleSpinBox()
+        self._thresh_spin.setDecimals(4)
+        self._thresh_spin.setFixedWidth(90)
+        self._thresh_spin.valueChanged.connect(self._on_spin_changed)
+
+        btn_apply = QPushButton("Apply")
+        btn_apply.clicked.connect(self._on_threshold_apply)
+
+        btn_reset = QPushButton("Reset")
+        btn_reset.clicked.connect(self._on_threshold_reset)
+
+        tb.addWidget(QLabel(" Threshold: "))
+        tb.addWidget(self._thresh_slider)
+        tb.addWidget(self._thresh_spin)
+        tb.addWidget(btn_apply)
+        tb.addWidget(btn_reset)
+
+        tb.addSeparator()
+
+        # Compare / Info / Export
         btn_compare = QPushButton("Compare")
         btn_compare.clicked.connect(self._on_compare)
         tb.addWidget(btn_compare)
 
-        # Info
         btn_info = QPushButton("Info")
         btn_info.clicked.connect(self._on_info)
         tb.addWidget(btn_info)
 
-        # Export
         btn_export = QPushButton("Export")
         btn_export.clicked.connect(self._on_export)
         tb.addWidget(btn_export)
@@ -164,8 +206,7 @@ class MainWindow(QMainWindow):
             return
 
         self._signal_set = signal_set
-        self._metric_map = None
-        self._threshold_result = None
+        self._clear_session()
         self._map_viewer.clear()
         self._signal_inspector.clear()
         self._refresh_map_combo()
@@ -177,42 +218,74 @@ class MainWindow(QMainWindow):
             f"z_axis={'file' if signal_set.z_axis_path else 'index'}"
         )
 
+    def _on_metrics_dialog(self) -> None:
+        """Open the multi-metric selection dialog."""
+        dlg = MetricsDialog(
+            self._registry, self._selected_metrics, parent=self,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._selected_metrics = dlg.selected_metrics()
+
     def _on_compute(self) -> None:
-        """Run the selected metric on the loaded dataset."""
+        """Run all selected metrics on the loaded dataset."""
         if self._signal_set is None:
             self._status.showMessage("No dataset loaded")
             return
-
-        metric_name = self._metric_combo.currentText()
-        metric = self._registry.get(metric_name)
-
-        self._status.showMessage(f"Computing {metric_name}…")
-        # Force status bar repaint before blocking compute.
-        self._status.repaint()
-
-        try:
-            self._metric_map = evaluate_metric_map(self._signal_set, metric)
-        except Exception as exc:
-            QMessageBox.critical(self, "Compute error", str(exc))
-            self._status.showMessage("Compute failed")
+        if not self._selected_metrics:
+            self._status.showMessage("No metrics selected — use Metrics…")
             return
 
-        # Auto-threshold at median of valid scores for convenience.
-        valid = self._metric_map.valid_map
-        scores = self._metric_map.score_map[valid]
-        if scores.size > 0:
-            median_val = float(np.median(scores))
-            self._threshold_result = apply_threshold(
-                self._metric_map, median_val, keep_rule="above",
-            )
-        else:
-            self._threshold_result = None
+        newly_computed: list[str] = []
+        for name in self._selected_metrics:
+            # Skip metrics already computed for this dataset/session.
+            if name in self._computed_results:
+                continue
+
+            metric = self._registry.get(name)
+            self._status.showMessage(f"Computing {name}…")
+            self._status.repaint()
+
+            try:
+                result = evaluate_metric_map(self._signal_set, metric)
+            except Exception as exc:
+                QMessageBox.critical(self, "Compute error", str(exc))
+                self._status.showMessage(f"Compute failed: {name}")
+                return
+
+            self._computed_results[name] = result
+            self._threshold_states[name] = None
+            newly_computed.append(name)
 
         self._refresh_map_combo()
-        self._show_current_map()
-        self._status.showMessage(f"Computed: {metric_name}")
 
-    def _on_map_switch(self, _text: str) -> None:
+        # Show first selected metric by default.
+        if self._computed_results:
+            first = self._selected_metrics[0]
+            idx = self._map_combo.findText(first)
+            if idx >= 0:
+                self._map_combo.setCurrentIndex(idx)
+
+        self._show_current_map()
+
+        total = len(self._computed_results)
+        new = len(newly_computed)
+        reused = total - new
+        self._status.showMessage(
+            f"{total} metric(s) available  ({new} new, {reused} reused)"
+        )
+
+    def _on_map_switch(self, text: str) -> None:
+        """Switch the displayed map to a different computed metric."""
+        if not text:
+            return
+        self._current_map_name = text
+        self._sync_slider_range()
+        self._show_current_map()
+
+    def _on_display_mode_changed(self, text: str) -> None:
+        """Switch between score / masked / mask_only display."""
+        self._display_mode = text
         self._show_current_map()
 
     def _on_pixel_selected(self, row: int, col: int) -> None:
@@ -227,10 +300,10 @@ class MainWindow(QMainWindow):
         )
 
         value = self._map_viewer.value_at(row, col)
-        map_name = self._map_combo.currentText()
+        name = self._current_map_name or "—"
         val_str = f"{value:.4g}" if value is not None else "—"
         self._status.showMessage(
-            f"Pixel ({row}, {col})  {map_name}={val_str}"
+            f"Pixel ({row}, {col})  {name}={val_str}"
         )
 
     def _on_compare(self) -> None:
@@ -259,23 +332,27 @@ class MainWindow(QMainWindow):
         else:
             info["Dataset"] = "none loaded"
 
-        if self._metric_map is not None:
-            info["Metric"] = self._metric_map.metric_name
-        if self._threshold_result is not None:
-            info["Threshold"] = (
-                f"{self._threshold_result.threshold:.4g}  "
-                f"({self._threshold_result.keep_rule})"
-            )
-            if self._threshold_result.stats:
-                info["Kept pixels"] = str(
-                    self._threshold_result.stats.get("kept_pixels", "—")
+        # List computed metrics.
+        if self._computed_results:
+            info["Computed metrics"] = ", ".join(self._computed_results.keys())
+
+        # Current map and threshold info.
+        if self._current_map_name:
+            info["Displayed metric"] = self._current_map_name
+            tr = self._threshold_states.get(self._current_map_name)
+            if tr is not None:
+                info["Threshold"] = (
+                    f"{tr.threshold:.4g}  ({tr.keep_rule})"
                 )
+                if tr.stats:
+                    info["Kept pixels"] = str(tr.stats.get("kept_pixels", "—"))
 
         dlg = InfoDialog(info, parent=self)
         dlg.exec()
 
     def _on_export(self) -> None:
-        if self._metric_map is None:
+        name = self._current_map_name
+        if name is None or name not in self._computed_results:
             self._status.showMessage("Nothing to export")
             return
 
@@ -285,48 +362,190 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
-        map_type = self._map_combo.currentText()
-        if map_type == "threshold_mask" and self._threshold_result is not None:
-            data = self._threshold_result.mask.astype(int)
+        mode = self._display_mode
+        result = self._computed_results[name]
+        tr = self._threshold_states.get(name)
+
+        if mode == "mask_only" and tr is not None:
+            data = tr.mask.astype(int)
         else:
-            data = self._metric_map.score_map
+            data = result.score_map
 
         np.savetxt(path, data, fmt="%.6g")
-        self._status.showMessage(f"Exported {map_type} → {path}")
+        self._status.showMessage(f"Exported {name} ({mode}) → {path}")
+
+    # ==================================================================
+    # Threshold handlers
+    # ==================================================================
+
+    def _on_slider_moved(self, tick: int) -> None:
+        """Map integer slider position to float value and sync spinbox."""
+        value = self._tick_to_value(tick)
+        self._thresh_spin.blockSignals(True)
+        self._thresh_spin.setValue(value)
+        self._thresh_spin.blockSignals(False)
+
+    def _on_spin_changed(self, value: float) -> None:
+        """Sync slider position when the spinbox is edited directly."""
+        tick = self._value_to_tick(value)
+        self._thresh_slider.blockSignals(True)
+        self._thresh_slider.setValue(tick)
+        self._thresh_slider.blockSignals(False)
+
+    def _on_threshold_apply(self) -> None:
+        """Apply threshold to the currently displayed metric map."""
+        name = self._current_map_name
+        if name is None or name not in self._computed_results:
+            self._status.showMessage("No metric map to threshold")
+            return
+
+        threshold_value = self._thresh_spin.value()
+        result = self._computed_results[name]
+
+        self._threshold_states[name] = apply_threshold(
+            result, threshold_value, keep_rule="above",
+        )
+
+        # Switch to masked view automatically.
+        self._display_combo.blockSignals(True)
+        self._display_combo.setCurrentText("masked")
+        self._display_combo.blockSignals(False)
+        self._display_mode = "masked"
+
+        self._show_current_map()
+
+        tr = self._threshold_states[name]
+        kept = tr.stats.get("kept_pixels", "?") if tr.stats else "?"
+        self._status.showMessage(
+            f"Threshold {threshold_value:.4g} applied to {name}  "
+            f"({kept} kept)"
+        )
+
+    def _on_threshold_reset(self) -> None:
+        """Clear threshold for the currently displayed metric map."""
+        name = self._current_map_name
+        if name is not None:
+            self._threshold_states[name] = None
+
+        # Switch back to raw score view.
+        self._display_combo.blockSignals(True)
+        self._display_combo.setCurrentText("score")
+        self._display_combo.blockSignals(False)
+        self._display_mode = "score"
+
+        self._show_current_map()
+        self._status.showMessage("Threshold reset")
 
     # ==================================================================
     # Helpers
     # ==================================================================
 
+    def _clear_session(self) -> None:
+        """Reset session state when a new dataset is loaded."""
+        self._computed_results.clear()
+        self._threshold_states.clear()
+        self._current_map_name = None
+        self._display_mode = "score"
+        self._display_combo.blockSignals(True)
+        self._display_combo.setCurrentText("score")
+        self._display_combo.blockSignals(False)
+
     def _refresh_map_combo(self) -> None:
-        """Update the map type combo box based on available results."""
+        """Populate map selector with actually computed metric names."""
         self._map_combo.blockSignals(True)
         self._map_combo.clear()
-
-        if self._metric_map is not None:
-            self._map_combo.addItem("score_map")
-            if self._threshold_result is not None:
-                self._map_combo.addItem("threshold_mask")
-
+        for name in self._computed_results:
+            self._map_combo.addItem(name)
         self._map_combo.blockSignals(False)
+
+        if self._computed_results:
+            first = list(self._computed_results.keys())[0]
+            self._current_map_name = first
 
     def _show_current_map(self) -> None:
         """Render the map currently selected in the combo box."""
-        map_type = self._map_combo.currentText()
+        name = self._current_map_name
+        if name is None or name not in self._computed_results:
+            return
 
-        if map_type == "score_map" and self._metric_map is not None:
-            self._map_viewer.set_map(
-                self._metric_map.score_map,
-                title=f"{self._metric_map.metric_name} — score map",
+        result = self._computed_results[name]
+        tr = self._threshold_states.get(name)
+
+        # Compute stable color range from the full original score map.
+        valid = result.valid_map
+        valid_scores = result.score_map[valid]
+        if valid_scores.size > 0:
+            vmin = float(np.nanmin(valid_scores))
+            vmax = float(np.nanmax(valid_scores))
+        else:
+            vmin, vmax = 0.0, 1.0
+
+        if self._display_mode == "masked" and tr is not None:
+            self._map_viewer.set_masked_map(
+                result.score_map,
+                tr.mask,
+                title=f"{name} — masked ({tr.keep_rule})",
+                vmin=vmin,
+                vmax=vmax,
             )
-        elif map_type == "threshold_mask" and self._threshold_result is not None:
+        elif self._display_mode == "mask_only" and tr is not None:
             self._map_viewer.set_binary_mask(
-                self._threshold_result.mask,
-                title=(
-                    f"{self._metric_map.metric_name} — mask  "
-                    f"({self._threshold_result.keep_rule})"
-                ),
+                tr.mask,
+                title=f"{name} — mask ({tr.keep_rule})",
             )
+        else:
+            self._map_viewer.set_map(
+                result.score_map,
+                title=f"{name} — score map",
+            )
+
+    def _sync_slider_range(self) -> None:
+        """Update threshold slider/spinbox range to match current map."""
+        name = self._current_map_name
+        if name is None or name not in self._computed_results:
+            return
+
+        result = self._computed_results[name]
+        valid = result.valid_map
+        valid_scores = result.score_map[valid]
+
+        if valid_scores.size > 0:
+            lo = float(np.nanmin(valid_scores))
+            hi = float(np.nanmax(valid_scores))
+        else:
+            lo, hi = 0.0, 1.0
+
+        # Prevent degenerate range.
+        if hi <= lo:
+            hi = lo + 1.0
+
+        self._slider_min = lo
+        self._slider_max = hi
+
+        self._thresh_spin.blockSignals(True)
+        self._thresh_spin.setRange(lo, hi)
+        self._thresh_spin.setSingleStep((hi - lo) / 100.0)
+        self._thresh_spin.setValue(lo)
+        self._thresh_spin.blockSignals(False)
+
+        self._thresh_slider.blockSignals(True)
+        self._thresh_slider.setValue(0)
+        self._thresh_slider.blockSignals(False)
+
+    def _tick_to_value(self, tick: int) -> float:
+        """Convert integer slider tick to float threshold value."""
+        lo = getattr(self, "_slider_min", 0.0)
+        hi = getattr(self, "_slider_max", 1.0)
+        return lo + (hi - lo) * tick / _SLIDER_STEPS
+
+    def _value_to_tick(self, value: float) -> int:
+        """Convert float threshold value to integer slider tick."""
+        lo = getattr(self, "_slider_min", 0.0)
+        hi = getattr(self, "_slider_max", 1.0)
+        if hi <= lo:
+            return 0
+        frac = (value - lo) / (hi - lo)
+        return max(0, min(_SLIDER_STEPS, int(round(frac * _SLIDER_STEPS))))
 
 
 # ======================================================================

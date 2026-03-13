@@ -95,6 +95,46 @@ class TestMapViewer:
         viewer.clear()
         assert viewer._data is None
 
+    def test_set_masked_map(self):
+        viewer = MapViewer()
+        data = np.arange(20, dtype=float).reshape(4, 5)
+        mask = np.ones((4, 5), dtype=bool)
+        mask[0, :] = False  # reject first row
+        viewer.set_masked_map(data, mask, title="masked")
+        # _data stores original scores for value_at()
+        assert viewer._data is not None
+        assert viewer.value_at(0, 0) == 0.0  # original value, not masked
+        assert viewer.value_at(1, 0) == 5.0
+
+    def test_set_masked_map_colorbar_range(self):
+        """vmin/vmax should be accepted without error."""
+        viewer = MapViewer()
+        data = np.random.rand(6, 6)
+        mask = data > 0.5
+        viewer.set_masked_map(data, mask, vmin=0.0, vmax=1.0)
+        assert viewer._data is not None
+
+    def test_set_masked_map_layer_order(self):
+        """Gray background must be beneath the masked score layer."""
+        viewer = MapViewer()
+        data = np.arange(20, dtype=float).reshape(4, 5)
+        mask = np.ones((4, 5), dtype=bool)
+        mask[0, :] = False
+        viewer.set_masked_map(data, mask, title="masked")
+        images = viewer._ax.get_images()
+        assert len(images) == 2
+        # The masked score layer (second) must have higher zorder.
+        assert images[1].get_zorder() >= images[0].get_zorder()
+
+    def test_set_masked_map_then_set_map(self):
+        """Switching from masked to raw must not crash."""
+        viewer = MapViewer()
+        data = np.random.rand(6, 6)
+        mask = data > 0.5
+        viewer.set_masked_map(data, mask, title="masked")
+        viewer.set_map(data, title="raw")
+        assert viewer._ax.get_title() == "raw"
+
 
 # ------------------------------------------------------------------
 # SignalInspector
