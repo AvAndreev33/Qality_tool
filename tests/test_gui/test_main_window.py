@@ -56,6 +56,18 @@ class TestMainWindow:
         window = MainWindow()
         assert window._map_combo.count() == 0
 
+    def test_layout_has_tool_panels(self):
+        """Map and signal tool panels must be present in the layout."""
+        window = MainWindow()
+        assert window._map_tools is not None
+        assert window._signal_tools is not None
+
+    def test_thresh_controls_in_map_tools_panel(self):
+        """Threshold slider/spinbox must be children of the map tools panel."""
+        window = MainWindow()
+        assert window._thresh_slider is window._map_tools.slider
+        assert window._thresh_spin is window._map_tools.spinbox
+
     def test_refresh_map_combo_from_results(self):
         window = MainWindow()
         window._computed_results["snr"] = _make_metric_map("snr")

@@ -492,3 +492,4 @@ testing_data/test.txt
 .claude/settings.local.json
 tests/test_gui/__pycache__/test_metrics_dialog.cpython-314-pytest-9.0.2.pyc
 src/quality_tool/gui/dialogs/__pycache__/metrics_dialog.cpython-314.pyc
+src/quality_tool/gui/widgets/__pycache__/tool_panels.cpython-314.pyc

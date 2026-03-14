@@ -11,6 +11,7 @@ import pytest
 
 from quality_tool.gui.widgets.map_viewer import MapViewer
 from quality_tool.gui.widgets.signal_inspector import SignalInspector
+from quality_tool.gui.widgets.tool_panels import MapToolsPanel, SignalToolsPanel
 
 
 # ------------------------------------------------------------------
@@ -154,3 +155,56 @@ class TestSignalInspector:
     def test_clear(self):
         inspector = SignalInspector()
         inspector.clear()
+
+
+# ------------------------------------------------------------------
+# MapToolsPanel
+# ------------------------------------------------------------------
+
+class TestMapToolsPanel:
+    def test_creation(self):
+        panel = MapToolsPanel()
+        assert panel is not None
+
+    def test_has_threshold_controls(self):
+        panel = MapToolsPanel()
+        assert panel.slider is not None
+        assert panel.spinbox is not None
+        assert panel.btn_apply is not None
+        assert panel.btn_reset is not None
+
+    def test_slider_range(self):
+        panel = MapToolsPanel(slider_steps=500)
+        assert panel.slider.maximum() == 500
+
+    def test_apply_signal(self):
+        panel = MapToolsPanel()
+        received = []
+        panel.apply_clicked.connect(lambda: received.append(True))
+        panel.btn_apply.click()
+        assert len(received) == 1
+
+    def test_reset_signal(self):
+        panel = MapToolsPanel()
+        received = []
+        panel.reset_clicked.connect(lambda: received.append(True))
+        panel.btn_reset.click()
+        assert len(received) == 1
+
+    def test_has_fixed_width(self):
+        panel = MapToolsPanel()
+        assert panel.maximumWidth() == panel.minimumWidth()
+
+
+# ------------------------------------------------------------------
+# SignalToolsPanel
+# ------------------------------------------------------------------
+
+class TestSignalToolsPanel:
+    def test_creation(self):
+        panel = SignalToolsPanel()
+        assert panel is not None
+
+    def test_has_fixed_width(self):
+        panel = SignalToolsPanel()
+        assert panel.maximumWidth() == panel.minimumWidth()

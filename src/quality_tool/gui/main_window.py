@@ -1,7 +1,18 @@
 """Main application window for Quality_tool GUI.
 
-Provides the central layout (toolbar → map viewer → signal inspector →
+Provides the central layout (toolbar → map section → signal section →
 status bar) and wires user actions to backend calls.
+
+Layout:
+    +--------------------------------------------------------------+
+    | Toolbar (Load | Metrics Compute | Map View | Compare Info Export) |
+    +--------------------------------------------------------------+
+    | Map section:  [  MapViewer  |  MapToolsPanel  ]              |
+    +--------------------------------------------------------------+
+    | Signal section:  [  SignalInspector  |  SignalToolsPanel  ]   |
+    +--------------------------------------------------------------+
+    | Status bar                                                    |
+    +--------------------------------------------------------------+
 """
 
 from __future__ import annotations
@@ -11,16 +22,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
-    QSlider,
     QSpinBox,
     QSplitter,
     QStatusBar,
@@ -36,6 +44,7 @@ from quality_tool.gui.dialogs.info_dialog import InfoDialog
 from quality_tool.gui.dialogs.metrics_dialog import MetricsDialog
 from quality_tool.gui.widgets.map_viewer import MapViewer
 from quality_tool.gui.widgets.signal_inspector import SignalInspector
+from quality_tool.gui.widgets.tool_panels import MapToolsPanel, SignalToolsPanel
 from quality_tool.gui.windows.compare_window import CompareWindow
 from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
@@ -85,11 +94,32 @@ class MainWindow(QMainWindow):
         # ----- widgets ---------------------------------------------------
         self._map_viewer = MapViewer()
         self._signal_inspector = SignalInspector()
+        self._map_tools = MapToolsPanel(slider_steps=_SLIDER_STEPS)
+        self._signal_tools = SignalToolsPanel()
+
+        # Convenience aliases so threshold handlers and tests can access
+        # the slider / spinbox directly on MainWindow.
+        self._thresh_slider = self._map_tools.slider
+        self._thresh_spin = self._map_tools.spinbox
 
         # ----- layout ----------------------------------------------------
+        # Map section: viewer + map tools panel side by side
+        map_section = QWidget()
+        map_layout = QHBoxLayout(map_section)
+        map_layout.setContentsMargins(0, 0, 0, 0)
+        map_layout.addWidget(self._map_viewer, stretch=1)
+        map_layout.addWidget(self._map_tools, stretch=0)
+
+        # Signal section: inspector + signal tools panel side by side
+        signal_section = QWidget()
+        signal_layout = QHBoxLayout(signal_section)
+        signal_layout.setContentsMargins(0, 0, 0, 0)
+        signal_layout.addWidget(self._signal_inspector, stretch=1)
+        signal_layout.addWidget(self._signal_tools, stretch=0)
+
         splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self._map_viewer)
-        splitter.addWidget(self._signal_inspector)
+        splitter.addWidget(map_section)
+        splitter.addWidget(signal_section)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
@@ -104,6 +134,10 @@ class MainWindow(QMainWindow):
 
         # ----- connections -----------------------------------------------
         self._map_viewer.pixel_selected.connect(self._on_pixel_selected)
+        self._map_tools.slider_moved.connect(self._on_slider_moved)
+        self._map_tools.spin_changed.connect(self._on_spin_changed)
+        self._map_tools.apply_clicked.connect(self._on_threshold_apply)
+        self._map_tools.reset_clicked.connect(self._on_threshold_reset)
 
     # ==================================================================
     # Toolbar
@@ -147,31 +181,6 @@ class MainWindow(QMainWindow):
             self._on_display_mode_changed,
         )
         tb.addWidget(self._display_combo)
-
-        tb.addSeparator()
-
-        # ----- threshold controls ----------------------------------------
-        self._thresh_slider = QSlider(Qt.Orientation.Horizontal)
-        self._thresh_slider.setRange(0, _SLIDER_STEPS)
-        self._thresh_slider.setFixedWidth(120)
-        self._thresh_slider.valueChanged.connect(self._on_slider_moved)
-
-        self._thresh_spin = QDoubleSpinBox()
-        self._thresh_spin.setDecimals(4)
-        self._thresh_spin.setFixedWidth(90)
-        self._thresh_spin.valueChanged.connect(self._on_spin_changed)
-
-        btn_apply = QPushButton("Apply")
-        btn_apply.clicked.connect(self._on_threshold_apply)
-
-        btn_reset = QPushButton("Reset")
-        btn_reset.clicked.connect(self._on_threshold_reset)
-
-        tb.addWidget(QLabel(" Threshold: "))
-        tb.addWidget(self._thresh_slider)
-        tb.addWidget(self._thresh_spin)
-        tb.addWidget(btn_apply)
-        tb.addWidget(btn_reset)
 
         tb.addSeparator()
 
