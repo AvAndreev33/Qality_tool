@@ -29,6 +29,12 @@ class FringeVisibility:
 
     name: str = "fringe_visibility"
 
+    # Michelson visibility relies on absolute intensity values (I_max,
+    # I_min).  Preprocessing steps such as baseline subtraction or
+    # normalisation destroy the physical meaning of these values, so
+    # this metric must always be evaluated on the raw signal.
+    input_policy: str = "raw"
+
     def evaluate(
         self,
         signal: np.ndarray,

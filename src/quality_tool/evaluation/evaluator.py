@@ -3,15 +3,30 @@
 Runs a single metric over every pixel signal in a :class:`SignalSet` and
 assembles the results into a :class:`MetricMapResult`.
 
-Evaluation order per pixel
---------------------------
+Metric input policy
+-------------------
+Each metric declares an ``input_policy`` attribute:
+
+* ``"raw"`` — the metric receives the original raw signal from the
+  dataset.  Preprocessing and ROI extraction are **skipped**.
+* ``"processed"`` — the metric receives the signal after the currently
+  configured preprocessing chain and optional ROI extraction.
+
+The evaluator reads ``metric.input_policy`` and selects the effective
+signal accordingly.  This keeps the decision close to the metric
+definition and away from the GUI or caller code.
+
+Evaluation order per pixel (processed metrics)
+-----------------------------------------------
 1. Extract 1-D signal from ``signal_set.signals[row, col, :]``
-2. Optionally apply preprocessing functions **in the order given**
+2. Apply preprocessing functions **in the order given**
 3. Optionally extract ROI (``segment_size``)
-4. Build ``context`` dict — precompute :class:`SpectralResult` on the
-   post-ROI signal and store as ``context["spectral_result"]``
-5. Optionally compute envelope on the post-ROI signal
+4. Build ``context`` dict — precompute :class:`SpectralResult`
+5. Optionally compute envelope
 6. Call ``metric.evaluate(signal, z_axis, envelope, context)``
+
+For raw-only metrics steps 2 and 3 are skipped; the raw signal is used
+directly from step 1.
 
 Invalid-score convention
 ------------------------
@@ -81,31 +96,45 @@ def evaluate_metric_map(
     h, w, _ = signal_set.signals.shape
     z_axis = signal_set.z_axis
 
+    # Determine effective signal path from the metric's declared policy.
+    # Metrics with input_policy="raw" receive the unmodified raw signal;
+    # metrics with input_policy="processed" go through the full
+    # preprocessing + ROI pipeline.
+    use_raw = getattr(metric, "input_policy", "processed") == "raw"
+
     # Collect per-pixel results in a flat list; reshape later.
     results: list[MetricResult] = []
 
     for row in range(h):
         for col in range(w):
-            signal = signal_set.signals[row, col, :].copy()
+            raw_signal = signal_set.signals[row, col, :].copy()
 
-            # 1) Preprocessing
-            if preprocess is not None:
-                for fn in preprocess:
-                    signal = fn(signal)
+            if use_raw:
+                # Raw-only metric: skip preprocessing and ROI.
+                signal = raw_signal
+                sig_z_axis: np.ndarray | None = z_axis
+            else:
+                # Processed metric: apply full pipeline.
+                signal = raw_signal
 
-            # 2) ROI extraction
-            sig_z_axis: np.ndarray | None = z_axis
-            if segment_size is not None:
-                signal = extract_roi(signal, segment_size)
-                # z_axis no longer matches the cropped signal length;
-                # pass None so downstream code uses index-based spacing.
-                sig_z_axis = None
+                # 1) Preprocessing
+                if preprocess is not None:
+                    for fn in preprocess:
+                        signal = fn(signal)
 
-            # 3) Context — precompute spectral data once per signal
+                # 2) ROI extraction
+                sig_z_axis = z_axis
+                if segment_size is not None:
+                    signal = extract_roi(signal, segment_size)
+                    # z_axis no longer matches the cropped signal length;
+                    # pass None so downstream code uses index-based spacing.
+                    sig_z_axis = None
+
+            # 3) Context — precompute spectral data on the effective signal
             spectral_result = compute_spectrum(signal, sig_z_axis)
             context: dict = {"spectral_result": spectral_result}
 
-            # 4) Envelope
+            # 4) Envelope (computed on the effective signal)
             envelope: np.ndarray | None = None
             if envelope_method is not None:
                 envelope = envelope_method.compute(signal, sig_z_axis, context)
@@ -160,10 +189,13 @@ def _assemble_map_result(
             getattr(fn, "__name__", repr(fn)) for fn in preprocess
         ]
 
+    input_policy = getattr(metric, "input_policy", "processed")
+
     metadata: dict = {
         "metric_name": metric.name,
-        "preprocess": preprocess_names,
-        "segment_size": segment_size,
+        "input_policy": input_policy,
+        "preprocess": preprocess_names if input_policy != "raw" else [],
+        "segment_size": segment_size if input_policy != "raw" else None,
         "envelope_method": (
             envelope_method.name if envelope_method is not None else None
         ),

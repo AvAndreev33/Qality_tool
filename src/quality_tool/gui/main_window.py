@@ -297,15 +297,38 @@ class MainWindow(QMainWindow):
             return
 
         new_settings = dlg.settings()
-        # If processing settings changed, invalidate cached results so
-        # the user must re-compute.
+        # If processing settings changed, invalidate cached results for
+        # metrics whose input_policy is "processed".  Raw-only metrics
+        # are unaffected by preprocessing/ROI/envelope changes.
         if new_settings != self._processing:
-            self._computed_results.clear()
+            names_to_drop = [
+                name for name in self._computed_results
+                if self._computed_results[name].metadata.get(
+                    "input_policy", "processed"
+                ) != "raw"
+            ]
+            for name in names_to_drop:
+                del self._computed_results[name]
+
+            # Always reset threshold — the mask-source metric's scores
+            # may have been invalidated.
             self._current_threshold = None
-            self._mask_source_metric = None
+
+            # Keep mask-source and current-map if they still exist in
+            # the surviving results; otherwise fall back.
+            if self._mask_source_metric not in self._computed_results:
+                self._mask_source_metric = None
+            if self._current_map_name not in self._computed_results:
+                self._current_map_name = None
+
             self._refresh_map_combo()
-            self._map_viewer.clear()
-            self._current_map_name = None
+
+            if self._computed_results:
+                # Surviving results exist — show the first one.
+                self._show_current_map()
+            else:
+                self._map_viewer.clear()
+
             self._status.showMessage(
                 "Settings changed — press Compute to re-evaluate"
             )
@@ -710,23 +733,54 @@ class MainWindow(QMainWindow):
         self._display_combo.blockSignals(False)
 
     def _refresh_map_combo(self) -> None:
-        """Populate map selector and mask-source combo with computed names."""
+        """Populate map selector and mask-source combo with computed names.
+
+        Syncs ``_current_map_name`` and ``_mask_source_metric`` so that
+        they always reflect what the combo widgets display.  If the
+        previous selection still exists in the results it is preserved;
+        otherwise the first available result is used.
+        """
+        names = list(self._computed_results.keys())
+
+        # --- map combo ---
         self._map_combo.blockSignals(True)
         self._map_combo.clear()
-        for name in self._computed_results:
+        for name in names:
             self._map_combo.addItem(name)
         self._map_combo.blockSignals(False)
 
-        # Also populate the mask-source metric selector.
+        # --- mask-source combo ---
         self._map_tools.mask_source_combo.blockSignals(True)
         self._map_tools.mask_source_combo.clear()
-        for name in self._computed_results:
+        for name in names:
             self._map_tools.mask_source_combo.addItem(name)
         self._map_tools.mask_source_combo.blockSignals(False)
 
-        if self._computed_results:
-            first = list(self._computed_results.keys())[0]
-            self._current_map_name = first
+        # --- sync internal state with combo contents ---
+        if names:
+            # Preserve previous selection when it still exists.
+            if self._current_map_name not in self._computed_results:
+                self._current_map_name = names[0]
+            # Point the map combo widget at the active name.
+            idx = self._map_combo.findText(self._current_map_name)
+            if idx >= 0:
+                self._map_combo.blockSignals(True)
+                self._map_combo.setCurrentIndex(idx)
+                self._map_combo.blockSignals(False)
+
+            if self._mask_source_metric not in self._computed_results:
+                self._mask_source_metric = names[0]
+            idx = self._map_tools.mask_source_combo.findText(
+                self._mask_source_metric,
+            )
+            if idx >= 0:
+                self._map_tools.mask_source_combo.blockSignals(True)
+                self._map_tools.mask_source_combo.setCurrentIndex(idx)
+                self._map_tools.mask_source_combo.blockSignals(False)
+            self._sync_slider_range()
+        else:
+            self._current_map_name = None
+            self._mask_source_metric = None
 
     def _show_current_map(self) -> None:
         """Render the map currently selected in the combo box."""

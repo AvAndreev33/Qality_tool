@@ -2,207 +2,164 @@
 
 ## Iteration name
 
-GUI research controls — preprocessing + ROI + envelope + signal overlays
+Metric input policy refinement — raw vs processed signal contract
 
 ## Goal
 
-Extend the GUI so that it exposes more of the existing research pipeline already available in the backend.
+Introduce an explicit metric input policy so that each metric can declare which signal representation it must use.
 
-This iteration should add:
-- GUI access to preprocessing settings
-- GUI access to ROI settings
-- GUI access to envelope method selection
-- GUI access to threshold keep rule selection
-- signal-inspector display modes and overlays for better per-pixel inspection
+This iteration should make the pipeline robust for metrics that:
+- must use the raw signal,
+- may use the processed signal,
+- may later require envelope-based inputs or other constrained representations.
 
-The goal is to move the GUI from a simple map viewer into the first real interactive WLI signal-quality workbench, while still keeping it minimal and backend-driven.
+The immediate practical case is:
+- `fringe_visibility` must be evaluated on the **raw signal only**
+
+This should be implemented as a general architectural refinement, not as a one-off special case.
 
 ---
 
 ## Why this iteration matters
 
-The backend already supports:
+The project now supports:
 - preprocessing
 - ROI extraction
 - envelope computation
-- spectral support
-- evaluator
-- thresholding
+- multi-metric computation
+- GUI settings that affect processing
+- reuse of computed metric results in a session
 
-But the GUI still exposes only a small part of that capability.
+This means different metrics may need different effective inputs.
 
-The next logical step is to let the user actually control and inspect these pipeline stages from the GUI.
+Examples:
+- `fringe_visibility` should use the raw signal because detrending / signed values destroy its physical meaning
+- other metrics may legitimately use processed signals
+- future metrics may require envelope-derived inputs
 
-This will make the tool much more useful for real engineering experimentation:
-- trying preprocessing variants
-- changing ROI behavior
-- trying envelope methods
-- comparing results
-- inspecting how the selected pixel signal changes
+Without an explicit contract, metric evaluation becomes fragile and difficult to reason about.
+
+This iteration introduces the first clean version of that contract.
 
 ---
 
 ## In scope
 
-### Processing settings dialog
+### Metric input policy
 
-Add a dedicated processing/settings dialog.
+Introduce an explicit declared policy for metric input selection.
 
-This dialog should allow the user to configure the currently supported processing-related options in a simple and explicit way.
+At minimum, each metric should be able to declare whether it uses:
+- `raw`
+- `processed`
 
-At minimum, it should support:
-- preprocessing enable/disable
-- baseline subtraction enable/disable, if supported by backend
-- normalization enable/disable, if supported by backend
-- smoothing enable/disable, if supported by backend
-- ROI enable/disable
-- ROI `segmentSize`
-- ROI centering mode
+This policy should live with the metric definition or metric metadata, not in ad hoc GUI conditionals.
+
+Keep this minimal and simple for now.
+
+---
+
+### Immediate policy assignment
 
 For this iteration:
-- only expose options that already exist in the backend
-- do not invent new backend behavior
-- if the backend currently supports only `raw_max` centering, expose only that option or keep it fixed and visible
+- `fringe_visibility` must be declared as `raw`
+- existing processed-signal metrics may remain `processed` if that matches current behavior
+- if any current metric is ambiguous, choose the simplest documented policy and state it clearly
 
-The dialog should be simple and use the current backend semantics.
+Do not overbuild a large policy system yet.
 
 ---
 
-### Envelope settings integration
+### Evaluator refinement
 
-Add GUI access to envelope method selection.
+Update the evaluator so that it can correctly choose the effective signal per metric.
 
 Requirements:
-- provide a simple way to enable or disable envelope usage
-- allow selecting among currently available envelope methods
-- store the selected envelope method in GUI session state
-- ensure evaluator calls use the selected method when enabled
+- evaluator must have access to the raw signal
+- evaluator must be able to produce the processed signal when needed
+- evaluator must select the correct effective signal according to the metric input policy
+- evaluator must keep this logic explicit and readable
 
-If there is only one meaningful envelope method right now, still expose it through a simple selection mechanism that can grow later.
+This should work correctly during multi-metric computation.
+
+Example:
+- in one compute run, one metric may use raw
+- another metric may use processed
 
 ---
 
-### Threshold keep rule control
+### Processing pipeline interaction
 
-Add GUI control for threshold keep rule.
+Clarify how preprocessing / ROI interact with the effective signal.
+
+For this iteration:
+- raw-only metrics must ignore preprocessing and ROI settings for their signal input
+- processed-signal metrics should continue using the current processing pipeline as already intended
+- if envelope is used by a metric, keep existing behavior consistent with the currently selected effective signal path
+
+Keep this as close as possible to the current architecture and behavior.
+
+---
+
+### Computed result reuse / caching behavior
+
+Refine result reuse logic so that it respects metric input policy.
 
 Requirements:
-- support at least:
-  - `score >= threshold`
-  - `score <= threshold`
-- keep this control simple
-- integrate it with the existing threshold slider/apply/reset workflow
-- the selected keep rule must affect threshold application for the currently displayed map
+- raw-only metric results should not be invalidated by preprocessing changes that do not affect raw input
+- processed-signal metric results should still depend on the relevant processing configuration
+- the reuse / cache key logic should remain simple but correct
 
-This should remain GUI-driven configuration of existing backend threshold behavior, not new backend logic.
+Do not introduce a large caching framework.
+Just make current reuse logic semantically correct.
 
 ---
 
-### Signal inspector display modes
+### GUI integration
 
-Extend the signal inspector so that it can show more than only the raw signal.
+The GUI must remain thin, but it should correctly reflect the new behavior.
 
-At minimum, add signal display modes such as:
-- raw signal
-- raw + envelope
-- ROI signal, when ROI is enabled and available
-- spectrum, if simple to support using existing spectral backend
+Requirements:
+- GUI compute flow should still work with multi-metric computation
+- GUI should not decide raw-vs-processed behavior itself
+- GUI may display useful information about the effective input mode if simple and clean
+- no major GUI redesign is needed in this iteration
 
-The exact UI can be lightweight:
-- a small control group in the signal tools panel
-- a selector
-- checkboxes where appropriate
+If helpful and minimal, expose the effective input mode in:
+- info dialog
+- status text
+- or result/session metadata
 
-The signal inspector should still stay compact and clear.
-
----
-
-### Signal overlays and display logic
-
-The signal inspector should use the currently selected pixel and reflect the current GUI processing configuration.
-
-Expected behavior:
-- raw mode always shows the original signal from the loaded dataset
-- raw + envelope shows the signal plus the current envelope when envelope is enabled
-- ROI mode shows the extracted ROI signal if ROI is enabled
-- spectrum mode shows the spectral representation of the selected pixel signal if supported in this iteration
-
-Keep this display logic explicit and backend-driven.
-
-Do not duplicate signal-processing logic in the plot widget itself.
-The widget should only display data prepared by higher-level GUI/backend integration.
+But keep this optional if it remains clean.
 
 ---
 
-### GUI session state extension
+### Documentation and code clarity
 
-Extend the current GUI session state so it also tracks:
-- current preprocessing settings
-- current ROI settings
-- current envelope enable/disable state
-- current envelope method
-- current threshold keep rule
-- current signal display mode
+Document the new metric-input behavior clearly in code where appropriate.
 
-Keep this state handling simple.
-Do not introduce a large state-management framework.
+At minimum, it should be clear:
+- why `fringe_visibility` is raw-only
+- how evaluator chooses effective signal input
+- how reuse behavior differs for raw vs processed metrics
 
----
-
-### Evaluator integration
-
-Update GUI compute flow so that evaluation uses the currently selected settings.
-
-This means the GUI should pass into the backend evaluator:
-- selected metric
-- processing settings
-- ROI settings
-- envelope method if enabled
-- threshold keep rule only when threshold is applied, not during metric computation
-
-All such integration must go through existing backend APIs or minimal safe extensions if required.
-
----
-
-### Signal tools panel usage
-
-Use the existing signal tools panel introduced in the previous iteration.
-
-This panel should now host the signal-related controls for this iteration, such as:
-- signal display mode selector
-- envelope display toggle if appropriate
-- ROI-related display toggle if appropriate
-- spectrum display toggle or selector if included
-
-Keep the controls minimal and focused.
-
----
-
-### Map tools panel extension
-
-Keep threshold controls in the map tools panel and extend them with:
-- keep rule selector (`>=` / `<=` or equivalent readable labels)
-
-Do not overload the panel with unrelated controls.
+This should reduce future confusion when adding new metrics.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- metric-specific parameter editors
-- advanced preprocessing pipelines not already supported in backend
-- new envelope algorithms
+- a large generalized policy engine
+- envelope-only / ROI-required policy types unless trivially needed
 - new metrics
-- histogram window
-- experiment manager
-- synthetic-data GUI
-- benchmark GUI
-- CUDA / performance backend work
-- session persistence
-- complex multi-panel compare dashboards
+- GUI redesign
+- new preprocessing methods
+- CUDA / performance work
+- experiment manifests
+- synthetic workflows
 
-Keep this iteration focused on exposing the existing backend research controls.
+Keep this iteration narrow and architectural.
 
 ---
 
@@ -210,65 +167,65 @@ Keep this iteration focused on exposing the existing backend research controls.
 
 Expected modules to update:
 
-- `src/quality_tool/gui/main_window.py`
-- `src/quality_tool/gui/dialogs/info_dialog.py` if needed
-- `src/quality_tool/gui/widgets/signal_inspector.py`
+- `src/quality_tool/metrics/base.py`
+- `src/quality_tool/metrics/baseline/fringe_visibility.py`
+- `src/quality_tool/evaluation/evaluator.py`
+- `src/quality_tool/gui/main_window.py` if needed for reuse/session-state correctness
+- any small supporting modules that currently hold metric/session metadata if needed
 
-Expected new modules to create:
+Expected tests to update/add:
 
-- `src/quality_tool/gui/dialogs/processing_dialog.py`
+- tests covering raw-only metric behavior
+- tests covering multi-metric runs with mixed input policies
+- tests covering reuse behavior for raw vs processed metrics
+- tests confirming preprocessing changes do not incorrectly affect raw-only metric evaluation
 
-Optional small helper module may be added if truly needed for lightweight GUI state/config handling, but avoid heavy abstractions.
+Keep tests targeted and lightweight.
 
 ---
 
 ## Testing expectations
 
-Add lightweight tests where practical.
+Add tests for:
+- `fringe_visibility` always using raw signal
+- evaluator correctly mixing raw-only and processed metrics in one compute run
+- preprocessing changes not invalidating raw-only results unnecessarily
+- processed metrics still depending on the current processing configuration
+- GUI/session-level recompute behavior remaining correct where practical
 
-Preferred focus:
-- processing dialog state behavior
-- GUI state updates after settings changes
-- keep rule switching
-- signal inspector display mode switching
-- compute flow using selected settings where practical
-- no regression of existing metric/session/map selection behavior
-
-Keep tests reliable and lightweight.
+Keep tests reliable and focused on semantics.
 
 ---
 
 ## Implementation preferences
 
-- keep the GUI thin and backend-driven
-- expose only backend functionality that already exists or is trivially supported
-- do not duplicate backend preprocessing logic in GUI code
-- keep session state simple and explicit
-- keep widgets focused on display, not processing
-- keep controls minimal and engineer-friendly
-- preserve the current layout and workflow while extending capability
+- keep the solution minimal
+- avoid hardcoded GUI-side metric special cases
+- keep metric policy close to metric definitions
+- keep evaluator logic explicit and readable
+- keep reuse logic simple and correct
+- prefer a small clear contract now over a complex future-proof abstraction
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- preprocessing settings can be configured from the GUI
-- ROI settings can be configured from the GUI
-- envelope method can be enabled/selected from the GUI
-- threshold keep rule can be selected from the GUI
-- signal inspector can show more than just raw signal
-- compute flow respects the selected processing/envelope settings
-- current workflow remains stable
-- the GUI becomes a more useful interactive research workbench while staying minimal
+- metrics can declare whether they use raw or processed signal input
+- `fringe_visibility` is enforced as raw-only
+- evaluator respects metric input policy during multi-metric computation
+- reuse behavior is correct for raw-only vs processed metrics
+- current GUI workflow still works
+- the behavior is clearly documented in code
+- tests cover the new semantics
 
 ---
 
 ## Expected assistant workflow
 
-1. read `CLAUDE.md` and the docs, including `docs/gui_spec.md`
-2. summarize the intended GUI research-control extension
+1. read `CLAUDE.md` and the docs
+2. summarize the intended metric-input-policy refinement
 3. propose a short implementation plan
 4. implement only this iteration
-5. add lightweight tests where practical
+5. add lightweight targeted tests
 6. summarize created files, modified files, and any limitations

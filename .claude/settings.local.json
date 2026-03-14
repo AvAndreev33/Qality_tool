@@ -20,7 +20,12 @@
       "Bash(python -m pytest tests/test_gui/ -v --tb=short)",
       "Bash(py -m pytest --tb=short)",
       "Bash(python -m pytest tests/ -v --tb=short)",
-      "Bash(ls ~/AppData/Local/Programs/Python/*/python.exe)"
+      "Bash(ls ~/AppData/Local/Programs/Python/*/python.exe)",
+      "Bash(python -m pytest tests/test_evaluation/test_input_policy.py -v)",
+      "Bash(ls /c/Users/avand/AppData/Local/Programs/Python/*/python.exe)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/test_input_policy.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/ tests/test_metrics/ -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v)"
     ]
   }
 }

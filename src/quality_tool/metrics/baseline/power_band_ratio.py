@@ -39,6 +39,7 @@ class PowerBandRatio:
     """
 
     name: str = "power_band_ratio"
+    input_policy: str = "processed"
 
     def __init__(
         self,

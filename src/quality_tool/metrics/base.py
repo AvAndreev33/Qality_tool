@@ -15,11 +15,26 @@ from quality_tool.core.models import MetricResult
 class BaseMetric(Protocol):
     """Protocol for quality metric implementations.
 
-    Every metric must expose a ``name`` attribute and an ``evaluate``
-    method that returns a :class:`MetricResult`.
+    Every metric must expose a ``name`` attribute, an ``input_policy``
+    attribute, and an ``evaluate`` method that returns a
+    :class:`MetricResult`.
     """
 
     name: str
+
+    input_policy: str
+    """Which signal representation this metric must receive.
+
+    Supported values:
+
+    * ``"raw"`` — the metric must be evaluated on the original raw
+      signal, ignoring any preprocessing or ROI extraction settings.
+    * ``"processed"`` — the metric uses the signal after the currently
+      configured preprocessing chain and optional ROI extraction.
+
+    The evaluator reads this attribute to select the correct effective
+    signal for each metric during multi-metric computation.
+    """
 
     def evaluate(
         self,

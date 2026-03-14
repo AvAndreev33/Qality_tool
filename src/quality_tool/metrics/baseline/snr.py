@@ -30,6 +30,7 @@ class SNR:
     """
 
     name: str = "snr"
+    input_policy: str = "processed"
 
     def evaluate(
         self,
