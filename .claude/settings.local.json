@@ -16,7 +16,11 @@
       "Bash(ls .venv/bin/python*)",
       "Bash(pip show:*)",
       "Bash(ls *.toml pyproject.toml setup.py setup.cfg)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_gui/ -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_gui/ -v)",
+      "Bash(python -m pytest tests/test_gui/ -v --tb=short)",
+      "Bash(py -m pytest --tb=short)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(ls ~/AppData/Local/Programs/Python/*/python.exe)"
     ]
   }
 }

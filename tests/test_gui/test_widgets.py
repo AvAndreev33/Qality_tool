@@ -152,6 +152,22 @@ class TestSignalInspector:
         z = np.arange(100, dtype=float)
         inspector.update_signal(signal, z, title="px (2,3)")
 
+    def test_update_signal_with_envelope(self):
+        """update_signal accepts an optional envelope overlay."""
+        inspector = SignalInspector()
+        signal = np.sin(np.linspace(0, 4 * np.pi, 100))
+        envelope = np.abs(signal)
+        z = np.arange(100, dtype=float)
+        inspector.update_signal(
+            signal, z, title="px (2,3)", envelope=envelope,
+        )
+
+    def test_update_spectrum(self):
+        inspector = SignalInspector()
+        freqs = np.linspace(0, 0.5, 51)
+        amps = np.random.rand(51) + 0.01  # positive for log scale
+        inspector.update_spectrum(freqs, amps, title="Spectrum test")
+
     def test_clear(self):
         inspector = SignalInspector()
         inspector.clear()
@@ -195,6 +211,19 @@ class TestMapToolsPanel:
         panel = MapToolsPanel()
         assert panel.maximumWidth() == panel.minimumWidth()
 
+    def test_has_mask_source_combo(self):
+        panel = MapToolsPanel()
+        assert panel.mask_source_combo is not None
+
+    def test_mask_source_signal_emitted(self):
+        panel = MapToolsPanel()
+        panel.mask_source_combo.addItems(["snr", "fringe_visibility"])
+        received = []
+        panel.mask_source_changed.connect(lambda t: received.append(t))
+        panel.mask_source_combo.setCurrentText("fringe_visibility")
+        assert len(received) == 1
+        assert received[0] == "fringe_visibility"
+
 
 # ------------------------------------------------------------------
 # SignalToolsPanel
@@ -208,3 +237,33 @@ class TestSignalToolsPanel:
     def test_has_fixed_width(self):
         panel = SignalToolsPanel()
         assert panel.maximumWidth() == panel.minimumWidth()
+
+    def test_has_mode_combo(self):
+        panel = SignalToolsPanel()
+        assert panel.mode_combo is not None
+        assert panel.mode_combo.count() == 3
+
+    def test_default_mode_is_raw(self):
+        panel = SignalToolsPanel()
+        assert panel.mode_combo.currentText() == "Raw"
+
+    def test_display_mode_signal_emitted(self):
+        panel = SignalToolsPanel()
+        received = []
+        panel.display_mode_changed.connect(lambda t: received.append(t))
+        panel.mode_combo.setCurrentText("Spectrum")
+        assert len(received) == 1
+        assert received[0] == "Spectrum"
+
+    def test_has_envelope_checkbox(self):
+        panel = SignalToolsPanel()
+        assert panel.envelope_checkbox is not None
+        assert panel.envelope_checkbox.isChecked() is False
+
+    def test_envelope_toggle_signal_emitted(self):
+        panel = SignalToolsPanel()
+        received = []
+        panel.envelope_toggled.connect(lambda v: received.append(v))
+        panel.envelope_checkbox.setChecked(True)
+        assert len(received) == 1
+        assert received[0] is True

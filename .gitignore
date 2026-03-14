@@ -493,3 +493,5 @@ testing_data/test.txt
 tests/test_gui/__pycache__/test_metrics_dialog.cpython-314-pytest-9.0.2.pyc
 src/quality_tool/gui/dialogs/__pycache__/metrics_dialog.cpython-314.pyc
 src/quality_tool/gui/widgets/__pycache__/tool_panels.cpython-314.pyc
+tests/test_gui/__pycache__/test_processing_dialog.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/gui/dialogs/__pycache__/processing_dialog.cpython-314.pyc

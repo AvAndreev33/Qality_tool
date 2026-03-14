@@ -1,13 +1,18 @@
 """Right-side tool panels for the map and signal sections.
 
-MapToolsPanel — hosts threshold controls beside the map viewer.
-SignalToolsPanel — placeholder for future signal-related controls.
+MapToolsPanel — hosts threshold controls (including mask-source metric
+selector) beside the map viewer.
+
+SignalToolsPanel — hosts signal display mode controls and envelope
+overlay toggle beside the signal inspector.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QGroupBox,
     QLabel,
@@ -32,6 +37,7 @@ class MapToolsPanel(QWidget):
     reset_clicked = Signal()
     slider_moved = Signal(int)
     spin_changed = Signal(float)
+    mask_source_changed = Signal(str)
 
     def __init__(self, slider_steps: int = 1000, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -43,6 +49,12 @@ class MapToolsPanel(QWidget):
         # --- Threshold group ---
         group = QGroupBox("Threshold")
         group_layout = QVBoxLayout(group)
+
+        # Mask-source metric selector
+        group_layout.addWidget(QLabel("Mask source:"))
+        self.mask_source_combo = QComboBox()
+        self.mask_source_combo.currentTextChanged.connect(self.mask_source_changed)
+        group_layout.addWidget(self.mask_source_combo)
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, slider_steps)
@@ -67,11 +79,11 @@ class MapToolsPanel(QWidget):
 
 
 class SignalToolsPanel(QWidget):
-    """Narrow placeholder panel beside the signal inspector.
+    """Narrow panel beside the signal inspector with display mode controls
+    and envelope overlay toggle."""
 
-    Reserves layout space for future signal-related controls
-    (envelope, spectrum, ROI inspection, etc.).
-    """
+    display_mode_changed = Signal(str)
+    envelope_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -80,7 +92,17 @@ class SignalToolsPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        label = QLabel("Signal Tools")
-        label.setStyleSheet("color: gray;")
-        layout.addWidget(label)
+        group = QGroupBox("Signal Display")
+        group_layout = QVBoxLayout(group)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Raw", "Processed", "Spectrum"])
+        self.mode_combo.currentTextChanged.connect(self.display_mode_changed)
+        group_layout.addWidget(self.mode_combo)
+
+        self.envelope_checkbox = QCheckBox("Envelope overlay")
+        self.envelope_checkbox.toggled.connect(self.envelope_toggled)
+        group_layout.addWidget(self.envelope_checkbox)
+
+        layout.addWidget(group)
         layout.addStretch()

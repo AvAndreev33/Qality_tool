@@ -48,9 +48,29 @@ class TestMainWindow:
         assert window._signal_set is None
         assert window._selected_metrics == []
         assert window._computed_results == {}
-        assert window._threshold_states == {}
         assert window._current_map_name is None
         assert window._display_mode == "score"
+        assert window._selected_pixel is None
+        assert window._signal_display_mode == "Raw"
+        assert window._mask_source_metric is None
+        assert window._current_threshold is None
+        assert window._envelope_overlay is False
+
+    def test_initial_processing_state(self):
+        window = MainWindow()
+        p = window._processing
+        assert p["baseline"] is False
+        assert p["normalize"] is False
+        assert p["smooth"] is False
+        assert p["roi_enabled"] is False
+        assert p["segment_size"] == 128
+        assert p["envelope_enabled"] is False
+        assert p["envelope_method"] == "analytic"
+
+    def test_envelope_registry_populated(self):
+        window = MainWindow()
+        methods = window._envelope_registry.list_methods()
+        assert "analytic" in methods
 
     def test_map_combo_empty_initially(self):
         window = MainWindow()
@@ -82,25 +102,44 @@ class TestMainWindow:
         assert "snr" in items
         assert "fringe_visibility" in items
 
+    def test_refresh_map_combo_populates_mask_source(self):
+        """Mask-source combo must be populated alongside map combo."""
+        window = MainWindow()
+        window._computed_results["snr"] = _make_metric_map("snr")
+        window._computed_results["fringe_visibility"] = _make_metric_map(
+            "fringe_visibility"
+        )
+        window._refresh_map_combo()
+        combo = window._map_tools.mask_source_combo
+        items = [combo.itemText(i) for i in range(combo.count())]
+        assert "snr" in items
+        assert "fringe_visibility" in items
+
     def test_clear_session_resets_state(self):
         window = MainWindow()
         window._computed_results["snr"] = _make_metric_map("snr")
-        window._threshold_states["snr"] = None
+        window._current_threshold = apply_threshold(
+            window._computed_results["snr"], 0.5,
+        )
+        window._mask_source_metric = "snr"
         window._current_map_name = "snr"
         window._display_mode = "masked"
+        window._envelope_overlay = True
 
         window._clear_session()
 
         assert window._computed_results == {}
-        assert window._threshold_states == {}
+        assert window._current_threshold is None
+        assert window._mask_source_metric is None
         assert window._current_map_name is None
         assert window._display_mode == "score"
+        assert window._envelope_overlay is False
 
     def test_threshold_apply_stores_result(self):
         window = MainWindow()
         mm = _make_metric_map("snr")
         window._computed_results["snr"] = mm
-        window._threshold_states["snr"] = None
+        window._mask_source_metric = "snr"
         window._current_map_name = "snr"
         window._slider_min = 0.0
         window._slider_max = 1.0
@@ -108,22 +147,43 @@ class TestMainWindow:
 
         window._on_threshold_apply()
 
-        tr = window._threshold_states["snr"]
+        tr = window._current_threshold
         assert tr is not None
         assert tr.threshold == 0.5
         assert tr.mask.shape == mm.score_map.shape
         assert window._display_mode == "masked"
+
+    def test_threshold_apply_uses_mask_source(self):
+        """Threshold should be built from mask-source metric, not displayed."""
+        window = MainWindow()
+        mm_snr = _make_metric_map("snr")
+        mm_fv = _make_metric_map("fringe_visibility")
+        window._computed_results["snr"] = mm_snr
+        window._computed_results["fringe_visibility"] = mm_fv
+        window._current_map_name = "fringe_visibility"
+        window._mask_source_metric = "snr"
+        window._slider_min = 0.0
+        window._slider_max = 1.0
+        window._thresh_spin.setValue(0.5)
+
+        window._on_threshold_apply()
+
+        tr = window._current_threshold
+        assert tr is not None
+        # Mask shape matches the source metric's score map
+        assert tr.mask.shape == mm_snr.score_map.shape
 
     def test_threshold_reset_clears(self):
         window = MainWindow()
         mm = _make_metric_map("snr")
         window._computed_results["snr"] = mm
         window._current_map_name = "snr"
-        window._threshold_states["snr"] = apply_threshold(mm, 0.5)
+        window._mask_source_metric = "snr"
+        window._current_threshold = apply_threshold(mm, 0.5)
 
         window._on_threshold_reset()
 
-        assert window._threshold_states["snr"] is None
+        assert window._current_threshold is None
         assert window._display_mode == "score"
 
     def test_show_current_map_score(self):
@@ -140,7 +200,7 @@ class TestMainWindow:
         window = MainWindow()
         mm = _make_metric_map("snr")
         window._computed_results["snr"] = mm
-        window._threshold_states["snr"] = apply_threshold(mm, 0.5)
+        window._current_threshold = apply_threshold(mm, 0.5)
         window._current_map_name = "snr"
         window._display_mode = "masked"
         window._show_current_map()
@@ -151,7 +211,7 @@ class TestMainWindow:
         window = MainWindow()
         mm = _make_metric_map("snr")
         window._computed_results["snr"] = mm
-        window._threshold_states["snr"] = apply_threshold(mm, 0.5)
+        window._current_threshold = apply_threshold(mm, 0.5)
         window._current_map_name = "snr"
         window._display_mode = "mask_only"
         window._show_current_map()
@@ -175,7 +235,6 @@ class TestMainWindow:
 
         existing = _make_metric_map("snr")
         window._computed_results["snr"] = existing
-        window._threshold_states["snr"] = None
 
         # Select snr (cached) + fringe_visibility (new).
         window._selected_metrics = ["snr", "fringe_visibility"]
@@ -205,14 +264,14 @@ class TestMainWindow:
         assert window._computed_results["snr"] is existing
 
     def test_compute_incremental_preserves_threshold(self, monkeypatch):
-        """Threshold on a cached metric must survive a second Compute."""
+        """Global threshold must survive a second Compute when cached."""
         window = MainWindow()
         window._signal_set = object()
 
         mm = _make_metric_map("snr")
         window._computed_results["snr"] = mm
         tr = apply_threshold(mm, 0.5)
-        window._threshold_states["snr"] = tr
+        window._current_threshold = tr
 
         window._selected_metrics = ["snr"]
 
@@ -224,8 +283,162 @@ class TestMainWindow:
 
         window._on_compute()
 
-        # Threshold must still be the same object — not reset to None.
-        assert window._threshold_states["snr"] is tr
+        # Threshold must still be the same object — not reset.
+        assert window._current_threshold is tr
+
+    # ------------------------------------------------------------------
+    # Processing helpers
+    # ------------------------------------------------------------------
+
+    def test_build_preprocess_list_empty(self):
+        window = MainWindow()
+        assert window._build_preprocess_list() == []
+
+    def test_build_preprocess_list_all(self):
+        window = MainWindow()
+        window._processing["baseline"] = True
+        window._processing["normalize"] = True
+        window._processing["smooth"] = True
+        fns = window._build_preprocess_list()
+        assert len(fns) == 3
+        names = [fn.__name__ for fn in fns]
+        assert "subtract_baseline" in names
+        assert "normalize_amplitude" in names
+        assert "smooth" in names
+
+    def test_get_segment_size_disabled(self):
+        window = MainWindow()
+        assert window._get_segment_size() is None
+
+    def test_get_segment_size_enabled(self):
+        window = MainWindow()
+        window._processing["roi_enabled"] = True
+        window._processing["segment_size"] = 64
+        assert window._get_segment_size() == 64
+
+    def test_get_envelope_method_disabled(self):
+        window = MainWindow()
+        assert window._get_envelope_method() is None
+
+    def test_get_envelope_method_enabled(self):
+        window = MainWindow()
+        window._processing["envelope_enabled"] = True
+        window._processing["envelope_method"] = "analytic"
+        method = window._get_envelope_method()
+        assert method is not None
+        assert method.name == "analytic"
+
+    # ------------------------------------------------------------------
+    # Signal display mode
+    # ------------------------------------------------------------------
+
+    def test_signal_display_mode_switching(self):
+        """Switching signal display mode must update internal state."""
+        window = MainWindow()
+        window._on_signal_display_mode_changed("Spectrum")
+        assert window._signal_display_mode == "Spectrum"
+
+    def test_signal_display_raw(self):
+        """Raw mode must render without error on a loaded dataset."""
+        window = MainWindow()
+        ss = SignalSet(
+            signals=np.random.rand(4, 5, 100),
+            width=5, height=4,
+            z_axis=np.arange(100, dtype=float),
+        )
+        window._signal_set = ss
+        window._signal_display_mode = "Raw"
+        window._update_signal_display(0, 0)
+
+    def test_signal_display_spectrum(self):
+        """Spectrum mode must render without error."""
+        window = MainWindow()
+        ss = SignalSet(
+            signals=np.random.rand(4, 5, 100),
+            width=5, height=4,
+            z_axis=np.arange(100, dtype=float),
+        )
+        window._signal_set = ss
+        window._signal_display_mode = "Spectrum"
+        window._update_signal_display(0, 0)
+
+    def test_signal_display_processed(self):
+        """Processed mode must render without error."""
+        window = MainWindow()
+        ss = SignalSet(
+            signals=np.random.rand(4, 5, 100),
+            width=5, height=4,
+            z_axis=np.arange(100, dtype=float),
+        )
+        window._signal_set = ss
+        window._processing["baseline"] = True
+        window._signal_display_mode = "Processed"
+        window._update_signal_display(0, 0)
+
+    def test_signal_display_processed_with_roi(self):
+        """Processed mode with ROI must render without error."""
+        window = MainWindow()
+        ss = SignalSet(
+            signals=np.random.rand(4, 5, 100),
+            width=5, height=4,
+            z_axis=np.arange(100, dtype=float),
+        )
+        window._signal_set = ss
+        window._processing["roi_enabled"] = True
+        window._processing["segment_size"] = 32
+        window._signal_display_mode = "Processed"
+        window._update_signal_display(0, 0)
+
+    def test_signal_display_envelope_overlay(self):
+        """Raw + Envelope overlay must render when envelope is enabled."""
+        window = MainWindow()
+        ss = SignalSet(
+            signals=np.random.rand(4, 5, 100),
+            width=5, height=4,
+            z_axis=np.arange(100, dtype=float),
+        )
+        window._signal_set = ss
+        window._processing["envelope_enabled"] = True
+        window._processing["envelope_method"] = "analytic"
+        window._envelope_overlay = True
+        window._signal_display_mode = "Raw"
+        window._update_signal_display(0, 0)
+
+    def test_signal_display_envelope_overlay_disabled(self):
+        """Envelope overlay off should show raw without envelope."""
+        window = MainWindow()
+        ss = SignalSet(
+            signals=np.random.rand(4, 5, 100),
+            width=5, height=4,
+            z_axis=np.arange(100, dtype=float),
+        )
+        window._signal_set = ss
+        window._processing["envelope_enabled"] = False
+        window._envelope_overlay = True
+        window._signal_display_mode = "Raw"
+        # Should not crash — envelope method returns None
+        window._update_signal_display(0, 0)
+
+    def test_envelope_toggled(self):
+        """Toggling envelope overlay must update internal state."""
+        window = MainWindow()
+        window._on_envelope_toggled(True)
+        assert window._envelope_overlay is True
+        window._on_envelope_toggled(False)
+        assert window._envelope_overlay is False
+
+    def test_mask_source_changed(self):
+        """Changing mask source must update internal state."""
+        window = MainWindow()
+        window._computed_results["snr"] = _make_metric_map("snr")
+        window._on_mask_source_changed("snr")
+        assert window._mask_source_metric == "snr"
+
+    def test_clear_session_resets_selected_pixel(self):
+        window = MainWindow()
+        window._selected_pixel = (2, 3)
+        window._clear_session()
+        assert window._selected_pixel is None
 
 
 # ------------------------------------------------------------------

@@ -62,6 +62,13 @@ class TestFringeVisibility:
         result = self.metric.evaluate(np.ones((2, 3)))
         assert result.valid is False
 
+    def test_negative_signal_invalid(self):
+        """Signals with negative values must be rejected (e.g. after baseline subtraction)."""
+        signal = np.array([-1.0, 2.0, -0.5, 3.0])
+        result = self.metric.evaluate(signal)
+        assert result.valid is False
+        assert "negative" in result.notes
+
 
 # ---------------------------------------------------------------------------
 # SNR

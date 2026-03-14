@@ -46,6 +46,16 @@ class FringeVisibility:
 
         i_max = float(np.max(signal))
         i_min = float(np.min(signal))
+
+        if i_min < 0.0:
+            return MetricResult(
+                score=0.0,
+                features={"i_max": i_max, "i_min": i_min},
+                valid=False,
+                notes="signal contains negative values; "
+                      "Michelson visibility requires non-negative intensity",
+            )
+
         denominator = i_max + i_min
 
         if denominator == 0.0:

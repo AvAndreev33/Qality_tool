@@ -1,11 +1,12 @@
 """Main application window for Quality_tool GUI.
 
-Provides the central layout (toolbar → map section → signal section →
+Provides the central layout (toolbar -> map section -> signal section ->
 status bar) and wires user actions to backend calls.
 
 Layout:
     +--------------------------------------------------------------+
-    | Toolbar (Load | Metrics Compute | Map View | Compare Info Export) |
+    | Toolbar (Load | Metrics Settings Compute | Map View |        |
+    |          Compare Info Export)                                 |
     +--------------------------------------------------------------+
     | Map section:  [  MapViewer  |  MapToolsPanel  ]              |
     +--------------------------------------------------------------+
@@ -38,10 +39,13 @@ from PySide6.QtWidgets import (
 )
 
 from quality_tool.core.models import MetricMapResult, SignalSet, ThresholdResult
+from quality_tool.envelope.analytic import AnalyticEnvelopeMethod
+from quality_tool.envelope.registry import EnvelopeRegistry
 from quality_tool.evaluation.evaluator import evaluate_metric_map
 from quality_tool.evaluation.thresholding import apply_threshold
 from quality_tool.gui.dialogs.info_dialog import InfoDialog
 from quality_tool.gui.dialogs.metrics_dialog import MetricsDialog
+from quality_tool.gui.dialogs.processing_dialog import ProcessingDialog
 from quality_tool.gui.widgets.map_viewer import MapViewer
 from quality_tool.gui.widgets.signal_inspector import SignalInspector
 from quality_tool.gui.widgets.tool_panels import MapToolsPanel, SignalToolsPanel
@@ -50,25 +54,45 @@ from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
 from quality_tool.metrics.registry import MetricRegistry
+from quality_tool.preprocessing.basic import (
+    normalize_amplitude,
+    smooth,
+    subtract_baseline,
+)
+from quality_tool.preprocessing.roi import extract_roi
+from quality_tool.spectral.fft import compute_spectrum
 
 # Number of discrete steps the threshold slider is divided into.
 _SLIDER_STEPS = 1000
 
 
 def _build_default_registry() -> MetricRegistry:
-    """Create a registry populated with the baseline metrics.
-
-    Note: this duplicates the list of baseline metrics because the
-    backend ``default_registry`` (in ``metrics.registry``) is currently
-    empty — nothing populates it at import time.  Once the backend
-    provides a pre-populated default registry, the GUI should reuse it
-    instead of maintaining its own copy.
-    """
+    """Create a registry populated with the baseline metrics."""
     registry = MetricRegistry()
     registry.register(FringeVisibility())
     registry.register(SNR())
     registry.register(PowerBandRatio())
     return registry
+
+
+def _build_envelope_registry() -> EnvelopeRegistry:
+    """Create a registry populated with the available envelope methods."""
+    registry = EnvelopeRegistry()
+    registry.register(AnalyticEnvelopeMethod())
+    return registry
+
+
+# Default processing settings returned by ProcessingDialog when no
+# prior settings exist.
+_DEFAULT_PROCESSING: dict = {
+    "baseline": False,
+    "normalize": False,
+    "smooth": False,
+    "roi_enabled": False,
+    "segment_size": 128,
+    "envelope_enabled": False,
+    "envelope_method": "analytic",
+}
 
 
 class MainWindow(QMainWindow):
@@ -81,15 +105,27 @@ class MainWindow(QMainWindow):
 
         # ----- backend ---------------------------------------------------
         self._registry = _build_default_registry()
+        self._envelope_registry = _build_envelope_registry()
 
         # ----- session state ---------------------------------------------
         self._signal_set: SignalSet | None = None
         self._selected_metrics: list[str] = []
         self._computed_results: dict[str, MetricMapResult] = {}
-        self._threshold_states: dict[str, ThresholdResult | None] = {}
         self._current_map_name: str | None = None
         self._display_mode: str = "score"  # "score" | "masked" | "mask_only"
         self._compare_windows: list[CompareWindow] = []
+
+        # Mask-source metric: which metric's score map drives the threshold.
+        self._mask_source_metric: str | None = None
+        # Current threshold result (built from the mask-source metric).
+        self._current_threshold: ThresholdResult | None = None
+
+        # Processing / envelope / signal-display state
+        self._processing: dict = dict(_DEFAULT_PROCESSING)
+        self._signal_display_mode: str = "Raw"
+        self._envelope_overlay: bool = False
+        # Track the last-selected pixel for signal-display-mode switching
+        self._selected_pixel: tuple[int, int] | None = None
 
         # ----- widgets ---------------------------------------------------
         self._map_viewer = MapViewer()
@@ -138,6 +174,15 @@ class MainWindow(QMainWindow):
         self._map_tools.spin_changed.connect(self._on_spin_changed)
         self._map_tools.apply_clicked.connect(self._on_threshold_apply)
         self._map_tools.reset_clicked.connect(self._on_threshold_reset)
+        self._map_tools.mask_source_changed.connect(
+            self._on_mask_source_changed,
+        )
+        self._signal_tools.display_mode_changed.connect(
+            self._on_signal_display_mode_changed,
+        )
+        self._signal_tools.envelope_toggled.connect(
+            self._on_envelope_toggled,
+        )
 
     # ==================================================================
     # Toolbar
@@ -159,6 +204,11 @@ class MainWindow(QMainWindow):
         btn_metrics = QPushButton("Metrics…")
         btn_metrics.clicked.connect(self._on_metrics_dialog)
         tb.addWidget(btn_metrics)
+
+        # Settings… dialog button
+        btn_settings = QPushButton("Settings…")
+        btn_settings.clicked.connect(self._on_settings_dialog)
+        tb.addWidget(btn_settings)
 
         # Compute
         btn_compute = QPushButton("Compute")
@@ -236,6 +286,31 @@ class MainWindow(QMainWindow):
             return
         self._selected_metrics = dlg.selected_metrics()
 
+    def _on_settings_dialog(self) -> None:
+        """Open the processing settings dialog."""
+        dlg = ProcessingDialog(
+            envelope_methods=self._envelope_registry.list_methods(),
+            current=self._processing,
+            parent=self,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_settings = dlg.settings()
+        # If processing settings changed, invalidate cached results so
+        # the user must re-compute.
+        if new_settings != self._processing:
+            self._computed_results.clear()
+            self._current_threshold = None
+            self._mask_source_metric = None
+            self._refresh_map_combo()
+            self._map_viewer.clear()
+            self._current_map_name = None
+            self._status.showMessage(
+                "Settings changed — press Compute to re-evaluate"
+            )
+        self._processing = new_settings
+
     def _on_compute(self) -> None:
         """Run all selected metrics on the loaded dataset."""
         if self._signal_set is None:
@@ -244,6 +319,11 @@ class MainWindow(QMainWindow):
         if not self._selected_metrics:
             self._status.showMessage("No metrics selected — use Metrics…")
             return
+
+        # Build preprocessing function list from current settings.
+        preprocess = self._build_preprocess_list()
+        segment_size = self._get_segment_size()
+        envelope_method = self._get_envelope_method()
 
         newly_computed: list[str] = []
         for name in self._selected_metrics:
@@ -256,14 +336,19 @@ class MainWindow(QMainWindow):
             self._status.repaint()
 
             try:
-                result = evaluate_metric_map(self._signal_set, metric)
+                result = evaluate_metric_map(
+                    self._signal_set,
+                    metric,
+                    preprocess=preprocess or None,
+                    segment_size=segment_size,
+                    envelope_method=envelope_method,
+                )
             except Exception as exc:
                 QMessageBox.critical(self, "Compute error", str(exc))
                 self._status.showMessage(f"Compute failed: {name}")
                 return
 
             self._computed_results[name] = result
-            self._threshold_states[name] = None
             newly_computed.append(name)
 
         self._refresh_map_combo()
@@ -289,7 +374,6 @@ class MainWindow(QMainWindow):
         if not text:
             return
         self._current_map_name = text
-        self._sync_slider_range()
         self._show_current_map()
 
     def _on_display_mode_changed(self, text: str) -> None:
@@ -301,12 +385,8 @@ class MainWindow(QMainWindow):
         if self._signal_set is None:
             return
 
-        signal = self._signal_set.signals[row, col, :]
-        z_axis = self._signal_set.z_axis
-        self._signal_inspector.update_signal(
-            signal, z_axis,
-            title=f"Pixel ({row}, {col})",
-        )
+        self._selected_pixel = (row, col)
+        self._update_signal_display(row, col)
 
         value = self._map_viewer.value_at(row, col)
         name = self._current_map_name or "—"
@@ -314,6 +394,25 @@ class MainWindow(QMainWindow):
         self._status.showMessage(
             f"Pixel ({row}, {col})  {name}={val_str}"
         )
+
+    def _on_signal_display_mode_changed(self, text: str) -> None:
+        """Switch signal inspector display mode and refresh."""
+        self._signal_display_mode = text
+        if self._selected_pixel is not None:
+            self._update_signal_display(*self._selected_pixel)
+
+    def _on_envelope_toggled(self, checked: bool) -> None:
+        """Toggle envelope overlay on the signal inspector."""
+        self._envelope_overlay = checked
+        if self._selected_pixel is not None:
+            self._update_signal_display(*self._selected_pixel)
+
+    def _on_mask_source_changed(self, text: str) -> None:
+        """Update mask-source metric and sync slider range."""
+        if not text:
+            return
+        self._mask_source_metric = text
+        self._sync_slider_range()
 
     def _on_compare(self) -> None:
         data, title = self._map_viewer.get_snapshot()
@@ -341,6 +440,27 @@ class MainWindow(QMainWindow):
         else:
             info["Dataset"] = "none loaded"
 
+        # Processing settings
+        p = self._processing
+        pp_items = []
+        if p.get("baseline"):
+            pp_items.append("baseline")
+        if p.get("normalize"):
+            pp_items.append("normalize")
+        if p.get("smooth"):
+            pp_items.append("smooth")
+        info["Preprocessing"] = ", ".join(pp_items) if pp_items else "none"
+
+        if p.get("roi_enabled"):
+            info["ROI"] = f"segment_size={p.get('segment_size', '?')}, centering=raw_max"
+        else:
+            info["ROI"] = "disabled"
+
+        if p.get("envelope_enabled"):
+            info["Envelope"] = p.get("envelope_method", "?")
+        else:
+            info["Envelope"] = "disabled"
+
         # List computed metrics.
         if self._computed_results:
             info["Computed metrics"] = ", ".join(self._computed_results.keys())
@@ -348,13 +468,17 @@ class MainWindow(QMainWindow):
         # Current map and threshold info.
         if self._current_map_name:
             info["Displayed metric"] = self._current_map_name
-            tr = self._threshold_states.get(self._current_map_name)
-            if tr is not None:
-                info["Threshold"] = (
-                    f"{tr.threshold:.4g}  ({tr.keep_rule})"
-                )
-                if tr.stats:
-                    info["Kept pixels"] = str(tr.stats.get("kept_pixels", "—"))
+
+        if self._mask_source_metric:
+            info["Mask source"] = self._mask_source_metric
+
+        tr = self._current_threshold
+        if tr is not None:
+            info["Threshold"] = (
+                f"{tr.threshold:.4g}  ({tr.keep_rule})"
+            )
+            if tr.stats:
+                info["Kept pixels"] = str(tr.stats.get("kept_pixels", "—"))
 
         dlg = InfoDialog(info, parent=self)
         dlg.exec()
@@ -373,7 +497,7 @@ class MainWindow(QMainWindow):
 
         mode = self._display_mode
         result = self._computed_results[name]
-        tr = self._threshold_states.get(name)
+        tr = self._current_threshold
 
         if mode == "mask_only" and tr is not None:
             data = tr.mask.astype(int)
@@ -402,16 +526,16 @@ class MainWindow(QMainWindow):
         self._thresh_slider.blockSignals(False)
 
     def _on_threshold_apply(self) -> None:
-        """Apply threshold to the currently displayed metric map."""
-        name = self._current_map_name
-        if name is None or name not in self._computed_results:
-            self._status.showMessage("No metric map to threshold")
+        """Apply threshold using the mask-source metric's score map."""
+        source = self._mask_source_metric
+        if source is None or source not in self._computed_results:
+            self._status.showMessage("No mask-source metric selected")
             return
 
         threshold_value = self._thresh_spin.value()
-        result = self._computed_results[name]
+        result = self._computed_results[source]
 
-        self._threshold_states[name] = apply_threshold(
+        self._current_threshold = apply_threshold(
             result, threshold_value, keep_rule="above",
         )
 
@@ -423,18 +547,16 @@ class MainWindow(QMainWindow):
 
         self._show_current_map()
 
-        tr = self._threshold_states[name]
+        tr = self._current_threshold
         kept = tr.stats.get("kept_pixels", "?") if tr.stats else "?"
         self._status.showMessage(
-            f"Threshold {threshold_value:.4g} applied to {name}  "
+            f"Threshold {threshold_value:.4g} on {source}  "
             f"({kept} kept)"
         )
 
     def _on_threshold_reset(self) -> None:
-        """Clear threshold for the currently displayed metric map."""
-        name = self._current_map_name
-        if name is not None:
-            self._threshold_states[name] = None
+        """Clear the current threshold."""
+        self._current_threshold = None
 
         # Switch back to raw score view.
         self._display_combo.blockSignals(True)
@@ -446,26 +568,161 @@ class MainWindow(QMainWindow):
         self._status.showMessage("Threshold reset")
 
     # ==================================================================
+    # Signal display logic
+    # ==================================================================
+
+    def _update_signal_display(self, row: int, col: int) -> None:
+        """Render the signal inspector for the given pixel using the
+        current signal display mode.
+
+        All processing is done via backend functions — the inspector
+        widget only receives pre-computed data.
+        """
+        if self._signal_set is None:
+            return
+
+        signal = self._signal_set.signals[row, col, :].copy()
+        z_axis = self._signal_set.z_axis
+        title = f"Pixel ({row}, {col})"
+        mode = self._signal_display_mode
+
+        if mode == "Raw":
+            envelope = self._compute_envelope_for_display(signal) if self._envelope_overlay else None
+            self._signal_inspector.update_signal(
+                signal, z_axis, label="raw", title=title, envelope=envelope,
+            )
+
+        elif mode == "Processed":
+            processed, proc_z = self._apply_processing_pipeline(signal, z_axis)
+            envelope = self._compute_envelope_for_display(processed) if self._envelope_overlay else None
+            self._signal_inspector.update_signal(
+                processed, proc_z, label="processed", title=title,
+                envelope=envelope,
+            )
+
+        elif mode == "Spectrum":
+            try:
+                spectral = compute_spectrum(signal, z_axis)
+            except Exception:
+                self._signal_inspector.update_signal(
+                    signal, z_axis, title=f"{title} (spectrum error)",
+                )
+                return
+            self._signal_inspector.update_spectrum(
+                spectral.frequencies, spectral.amplitude, title=title,
+            )
+
+        else:
+            # Fallback — raw signal
+            self._signal_inspector.update_signal(
+                signal, z_axis, title=title,
+            )
+
+    def _apply_processing_pipeline(
+        self, signal: np.ndarray, z_axis: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Apply the enabled preprocessing steps and ROI to a signal.
+
+        Returns the (possibly shortened) signal and its z-axis.
+        """
+        processed = signal.copy()
+
+        # Step 1: preprocessing
+        for fn in self._build_preprocess_list():
+            processed = fn(processed)
+
+        # Step 2: ROI extraction
+        seg_size = self._get_segment_size()
+        if seg_size is not None:
+            try:
+                processed = extract_roi(processed, seg_size)
+                # ROI shortens the signal — build a matching z-axis
+                z_axis = np.arange(len(processed), dtype=float)
+            except Exception:
+                pass  # keep the full processed signal on ROI error
+
+        return processed, z_axis
+
+    def _compute_envelope_for_display(
+        self, signal: np.ndarray,
+    ) -> np.ndarray | None:
+        """Compute envelope for display, baseline-subtracting first.
+
+        Returns None if envelope computation is not possible.
+        """
+        env_method = self._get_envelope_method()
+        if env_method is None:
+            return None
+        try:
+            centered = subtract_baseline(signal)
+            return env_method.compute(centered)
+        except Exception:
+            return None
+
+    # ==================================================================
+    # Processing helpers
+    # ==================================================================
+
+    def _build_preprocess_list(self) -> list:
+        """Build an ordered list of preprocessing callables from settings."""
+        fns = []
+        if self._processing.get("baseline"):
+            fns.append(subtract_baseline)
+        if self._processing.get("normalize"):
+            fns.append(normalize_amplitude)
+        if self._processing.get("smooth"):
+            fns.append(smooth)
+        return fns
+
+    def _get_segment_size(self) -> int | None:
+        """Return segment_size if ROI is enabled, else None."""
+        if self._processing.get("roi_enabled"):
+            return self._processing.get("segment_size", 128)
+        return None
+
+    def _get_envelope_method(self):
+        """Return the selected envelope method instance, or None."""
+        if not self._processing.get("envelope_enabled"):
+            return None
+        name = self._processing.get("envelope_method", "")
+        if not name:
+            return None
+        try:
+            return self._envelope_registry.get(name)
+        except KeyError:
+            return None
+
+    # ==================================================================
     # Helpers
     # ==================================================================
 
     def _clear_session(self) -> None:
         """Reset session state when a new dataset is loaded."""
         self._computed_results.clear()
-        self._threshold_states.clear()
+        self._current_threshold = None
+        self._mask_source_metric = None
         self._current_map_name = None
         self._display_mode = "score"
+        self._selected_pixel = None
+        self._envelope_overlay = False
         self._display_combo.blockSignals(True)
         self._display_combo.setCurrentText("score")
         self._display_combo.blockSignals(False)
 
     def _refresh_map_combo(self) -> None:
-        """Populate map selector with actually computed metric names."""
+        """Populate map selector and mask-source combo with computed names."""
         self._map_combo.blockSignals(True)
         self._map_combo.clear()
         for name in self._computed_results:
             self._map_combo.addItem(name)
         self._map_combo.blockSignals(False)
+
+        # Also populate the mask-source metric selector.
+        self._map_tools.mask_source_combo.blockSignals(True)
+        self._map_tools.mask_source_combo.clear()
+        for name in self._computed_results:
+            self._map_tools.mask_source_combo.addItem(name)
+        self._map_tools.mask_source_combo.blockSignals(False)
 
         if self._computed_results:
             first = list(self._computed_results.keys())[0]
@@ -478,7 +735,7 @@ class MainWindow(QMainWindow):
             return
 
         result = self._computed_results[name]
-        tr = self._threshold_states.get(name)
+        tr = self._current_threshold
 
         # Compute stable color range from the full original score map.
         valid = result.valid_map
@@ -490,17 +747,19 @@ class MainWindow(QMainWindow):
             vmin, vmax = 0.0, 1.0
 
         if self._display_mode == "masked" and tr is not None:
+            source = self._mask_source_metric or name
             self._map_viewer.set_masked_map(
                 result.score_map,
                 tr.mask,
-                title=f"{name} — masked ({tr.keep_rule})",
+                title=f"{name} — masked (source: {source})",
                 vmin=vmin,
                 vmax=vmax,
             )
         elif self._display_mode == "mask_only" and tr is not None:
+            source = self._mask_source_metric or name
             self._map_viewer.set_binary_mask(
                 tr.mask,
-                title=f"{name} — mask ({tr.keep_rule})",
+                title=f"{name} — mask (source: {source})",
             )
         else:
             self._map_viewer.set_map(
@@ -509,12 +768,12 @@ class MainWindow(QMainWindow):
             )
 
     def _sync_slider_range(self) -> None:
-        """Update threshold slider/spinbox range to match current map."""
-        name = self._current_map_name
-        if name is None or name not in self._computed_results:
+        """Update threshold slider/spinbox range to match mask-source metric."""
+        source = self._mask_source_metric
+        if source is None or source not in self._computed_results:
             return
 
-        result = self._computed_results[name]
+        result = self._computed_results[source]
         valid = result.valid_map
         valid_scores = result.score_map[valid]
 
