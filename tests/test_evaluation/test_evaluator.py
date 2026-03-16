@@ -83,8 +83,9 @@ class _VariableFeatureMetric:
 
 
 class _ContextCheckMetric:
-    """Metric that asserts context contains spectral_result."""
+    """Metric that declares needs_spectral and asserts context contains spectral_result."""
     name = "context_check"
+    needs_spectral = True
 
     def evaluate(self, signal, z_axis=None, envelope=None, context=None):
         assert context is not None, "context must not be None"

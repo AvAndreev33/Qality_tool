@@ -55,3 +55,32 @@ class AnalyticEnvelopeMethod:
 
         analytic_signal = hilbert(signal)
         return np.abs(analytic_signal)
+
+    def compute_batch(
+        self,
+        signals: np.ndarray,
+        z_axis: np.ndarray | None = None,
+        context: dict | None = None,
+    ) -> np.ndarray:
+        """Compute the Hilbert envelope for a batch of signals.
+
+        Parameters
+        ----------
+        signals : np.ndarray
+            2-D array of shape ``(N, M)``.
+
+        Returns
+        -------
+        np.ndarray
+            2-D envelope array of shape ``(N, M)``.
+        """
+        if signals.ndim != 2:
+            raise ValueError(
+                f"signals must be 2-D, got shape {signals.shape}"
+            )
+        if signals.shape[1] == 0:
+            raise ValueError("signals must not be empty along axis 1")
+
+        # scipy.signal.hilbert supports batch along axis=-1 by default
+        analytic_signals = hilbert(signals, axis=1)
+        return np.abs(analytic_signals)

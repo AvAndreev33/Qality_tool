@@ -12,10 +12,15 @@ Can consume a precomputed :class:`SpectralResult` via
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from quality_tool.core.models import MetricResult
 from quality_tool.spectral.fft import SpectralResult, compute_spectrum
+
+if TYPE_CHECKING:
+    from quality_tool.metrics.batch_result import BatchMetricArrays
 
 
 class PowerBandRatio:
@@ -40,6 +45,7 @@ class PowerBandRatio:
 
     name: str = "power_band_ratio"
     input_policy: str = "processed"
+    needs_spectral: bool = True
 
     def __init__(
         self,
@@ -103,3 +109,51 @@ class PowerBandRatio:
             score=float(pbr),
             features={"signal_power": signal_power, "total_power": total_power},
         )
+
+    def evaluate_batch(
+        self,
+        signals: np.ndarray,
+        z_axis: np.ndarray | None = None,
+        envelopes: np.ndarray | None = None,
+        context: dict | None = None,
+    ) -> BatchMetricArrays:
+        """Vectorised evaluation over a chunk of signals ``(N, M)``."""
+        from quality_tool.metrics.batch_result import BatchMetricArrays
+
+        n, m = signals.shape
+
+        # Get batch spectral data from context if available
+        if context is not None and "batch_amplitude" in context:
+            amplitude = context["batch_amplitude"]      # (N, F)
+            frequencies = context["batch_frequencies"]   # (F,)
+        else:
+            # Fallback: compute batch FFT
+            if z_axis is not None and len(z_axis) >= 2:
+                spacing = float(np.mean(np.diff(z_axis)))
+                if spacing <= 0:
+                    spacing = 1.0
+            else:
+                spacing = 1.0
+            fft_coeffs = np.fft.rfft(signals, axis=1)
+            frequencies = np.fft.rfftfreq(m, d=spacing)
+            amplitude = np.abs(fft_coeffs)
+
+        power = amplitude ** 2  # (N, F)
+
+        # Total power: exclude DC (index 0)
+        total_power = np.sum(power[:, 1:], axis=1)  # (N,)
+
+        # Signal band
+        signal_mask = (
+            (frequencies >= self.low_freq) & (frequencies <= self.high_freq)
+        )
+        signal_power = np.sum(power[:, signal_mask], axis=1)  # (N,)
+
+        scores = np.full(n, np.nan)
+        valid = total_power >= 1e-20
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            scores[valid] = signal_power[valid] / total_power[valid]
+
+        features = {"signal_power": signal_power, "total_power": total_power}
+        return BatchMetricArrays(scores=scores, valid=valid, features=features)

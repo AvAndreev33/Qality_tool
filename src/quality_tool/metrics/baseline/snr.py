@@ -10,9 +10,14 @@ the signal (samples likely away from the central fringe region).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from quality_tool.core.models import MetricResult
+
+if TYPE_CHECKING:
+    from quality_tool.metrics.batch_result import BatchMetricArrays
 
 
 class SNR:
@@ -31,6 +36,7 @@ class SNR:
 
     name: str = "snr"
     input_policy: str = "processed"
+    needs_spectral: bool = False
 
     def evaluate(
         self,
@@ -68,3 +74,33 @@ class SNR:
             score=float(snr_value),
             features={"peak_to_peak": peak_to_peak, "noise_std": noise_std},
         )
+
+    def evaluate_batch(
+        self,
+        signals: np.ndarray,
+        z_axis: np.ndarray | None = None,
+        envelopes: np.ndarray | None = None,
+        context: dict | None = None,
+    ) -> BatchMetricArrays:
+        """Vectorised evaluation over a chunk of signals ``(N, M)``."""
+        from quality_tool.metrics.batch_result import BatchMetricArrays
+
+        n, m = signals.shape
+        quarter = max(m // 4, 1)
+
+        # Noise region: first + last quarter of each signal
+        noise = np.concatenate(
+            [signals[:, :quarter], signals[:, -quarter:]], axis=1,
+        )
+        noise_std = np.std(noise, axis=1, ddof=0)
+
+        peak_to_peak = np.max(signals, axis=1) - np.min(signals, axis=1)
+
+        scores = np.full(n, np.nan)
+        valid = noise_std >= 1e-12
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            scores[valid] = peak_to_peak[valid] / noise_std[valid]
+
+        features = {"peak_to_peak": peak_to_peak, "noise_std": noise_std}
+        return BatchMetricArrays(scores=scores, valid=valid, features=features)

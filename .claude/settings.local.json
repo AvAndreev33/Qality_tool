@@ -29,7 +29,23 @@
       "Bash(xargs grep:*)",
       "Bash(python -m pytest tests/test_gui/test_histogram_window.py tests/test_gui/test_main_window.py -v)",
       "Bash(ls venv/Scripts/python*)",
-      "Bash(.venv/Scripts/python -m pytest tests/test_gui/test_histogram_window.py tests/test_gui/test_main_window.py -v)"
+      "Bash(.venv/Scripts/python -m pytest tests/test_gui/test_histogram_window.py tests/test_gui/test_main_window.py -v)",
+      "Bash(find /c/Users/avand/PycharmProjects/wli_research_workbench/src/quality_tool/gui -type f -name *.py)",
+      "Bash(find C:/Users/avand/PycharmProjects/wli_research_workbench -name *.tif -o -name *.tiff -o -name z_axis.txt)",
+      "Bash(awk '{print NF}')",
+      "Bash(ls C:/Users/avand/PycharmProjects/wli_research_workbench/testing_data/real_data_stack/Image_*.tif)",
+      "Bash(python3 -c \":*)",
+      "Bash(python -c \":*)",
+      "Bash(ls C:/Users/avand/PycharmProjects/wli_research_workbench/.venv/Scripts/python*)",
+      "Bash(C:/Users/avand/PycharmProjects/wli_research_workbench/.venv/Scripts/python.exe -c \":*)",
+      "Bash(.venv/Scripts/python.exe scripts/profile_pipeline.py)",
+      "Bash(.venv/Scripts/python.exe -c \":*)",
+      "Bash(.venv/Scripts/pip.exe install:*)",
+      "Bash(.venv/Scripts/python.exe -m pip install psutil)",
+      "Bash(.venv/Scripts/python.exe -c \"import psutil; print\\(psutil.Process\\(\\).memory_info\\(\\).rss / 1024 / 1024, ''MB''\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/ tests/test_metrics/ -x -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/test_batch_evaluator.py -x -v)"
     ]
   }
 }

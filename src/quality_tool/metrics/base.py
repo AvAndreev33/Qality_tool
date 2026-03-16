@@ -1,23 +1,37 @@
 """Base metric interface for Quality_tool.
 
 Defines the protocol that every quality metric must satisfy.
+
+Batch evaluation
+----------------
+Metrics may optionally implement ``evaluate_batch`` for vectorised
+evaluation over a 2-D chunk of signals.  The evaluator will prefer
+``evaluate_batch`` when available and fall back to the per-signal
+``evaluate`` otherwise.
+
+Dependency hints
+----------------
+``needs_spectral`` — when ``True`` the evaluator precomputes a batch
+spectral context and passes it to the metric.  Metrics that do not need
+FFT data should leave this as ``False`` (the default) so the evaluator
+can skip the FFT entirely.
 """
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 
 from quality_tool.core.models import MetricResult
 
 
+@runtime_checkable
 class BaseMetric(Protocol):
     """Protocol for quality metric implementations.
 
-    Every metric must expose a ``name`` attribute, an ``input_policy``
-    attribute, and an ``evaluate`` method that returns a
-    :class:`MetricResult`.
+    Every metric must expose ``name``, ``input_policy``, and ``evaluate``.
+    Optional extensions: ``needs_spectral``, ``evaluate_batch``.
     """
 
     name: str

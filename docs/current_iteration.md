@@ -2,247 +2,248 @@
 
 ## Iteration name
 
-Histogram and threshold analysis — distribution view for current map
+Profiling and performance analysis — bottlenecks before CUDA
 
 ## Goal
 
-Extend the GUI with a histogram-based analysis view for the currently displayed map.
+Profile the current backend and GUI-driven compute workflow on real data in order to identify the true bottlenecks before introducing a CUDA backend.
 
-This iteration should add:
-- a histogram window for the current displayed map
-- a threshold indicator line in the histogram
-- basic descriptive statistics for the current map
-- kept/rejected statistics based on the current threshold state
-- support for opening multiple histogram windows as fixed comparison snapshots
+This iteration should:
+- measure where time is spent during real workflow execution
+- identify the slowest stages in the current pipeline
+- identify unnecessary recomputation, copies, and memory-heavy paths
+- produce a short actionable performance report
+- implement only small safe fixes if they are trivial and clearly beneficial
 
-The goal is to improve the workflow of selecting and comparing quality criteria by making the distribution of map values visible and directly connected to thresholding.
+The main goal is understanding and planning, not large optimization yet.
 
 ---
 
 ## Why this iteration matters
 
-The current GUI already supports:
-- loading datasets
-- multi-metric computation
-- map switching
-- threshold application
-- masked display
-- signal inspection
-- map comparison windows
+The project now has:
+- real-data loaders
+- preprocessing / ROI / envelope / spectral support
+- metrics
+- evaluator
+- thresholding
+- usable GUI
+- histogram-based analysis
 
-But thresholding is still less interpretable than it should be.
+The system already works, but compute time is high on real WLI data.
 
-To choose good thresholds and compare criteria properly, the user should be able to see:
-- how the current map values are distributed,
-- where the current threshold lies in that distribution,
-- how many pixels are kept or rejected.
+Before building a CUDA backend, we need to know:
+- which parts are truly the bottleneck
+- what should be accelerated first
+- what can be improved on CPU immediately
+- what architectural changes would help CUDA integration later
 
-This is directly useful for the engineering task of comparing signal-quality criteria.
+This iteration creates that foundation.
 
 ---
 
 ## In scope
 
-### Histogram window for current displayed map
+### Real-data profiling
 
-Add the ability to open a histogram window for the map currently shown in the main viewer.
+Profile the current pipeline on real data from `testing_data`.
 
-Requirements:
-- the histogram should be based on the currently displayed metric map
-- the histogram should open in a separate window
-- the histogram window should behave as a fixed snapshot of the current map state at the moment it is opened
-- multiple histogram windows may be opened for comparison
+Use realistic workflows, for example:
+- load real txt dataset
+- load real image stack dataset if appropriate
+- compute one metric
+- compute multiple metrics
+- compute with and without preprocessing
+- compute with and without envelope where relevant
+- apply thresholding
+- update GUI-driven compute path if practical to measure cleanly
 
-This should mirror the current compare-window philosophy.
-
----
-
-### Histogram content
-
-The histogram should show the distribution of values of the current displayed map.
-
-Requirements:
-- use the raw underlying score map of the currently selected metric as the histogram source
-- do not build the histogram from a destructively masked map
-- handle invalid pixels consistently and explicitly
-- if valid/invalid filtering is already naturally available, use only valid values for the histogram; otherwise document the chosen behavior clearly
-
-Keep the implementation simple and explicit.
+The main focus is compute path profiling, not GUI rendering speed.
 
 ---
 
-### Threshold indicator line
+### Stage-level timing breakdown
 
-The histogram window should visually indicate the current threshold.
+Measure the runtime contribution of the main stages.
 
-Requirements:
-- draw a clear vertical threshold line on the histogram
-- if the threshold for the currently displayed metric/map is active, the line should reflect its value
-- if no threshold is currently active, the histogram may either:
-  - show no line, or
-  - show the current slider value if that is already cleanly available
+At minimum, try to separate timings for:
+- loading
+- metadata parsing
+- z-axis handling
+- preprocessing
+- ROI extraction
+- envelope computation
+- spectral / FFT computation
+- metric evaluation
+- thresholding
+- GUI-triggered orchestration overhead if relevant
 
-Choose the simplest behavior that stays consistent with the current GUI state model.
-
-The histogram and thresholded map should remain visually consistent.
-
----
-
-### Basic map statistics
-
-Display simple descriptive statistics for the currently displayed map.
-
-Recommended values:
-- min
-- max
-- mean
-- median
-- standard deviation
-
-These may be shown:
-- inside the histogram window,
-- in a compact info area within that window,
-- or in another simple and readable form
-
-Keep it lightweight and clear.
+The result should make it clear which stages dominate total runtime.
 
 ---
 
-### Threshold outcome statistics
+### Metric-level profiling
 
-Display simple threshold-related statistics for the current map.
+Profile current metrics individually on realistic data.
 
-Recommended values:
-- number of valid pixels
-- number of kept pixels
-- number of rejected pixels
-- kept fraction (or kept percentage)
+At minimum, include:
+- `fringe_visibility`
+- `snr`
+- `power_band_ratio`
 
-Requirements:
-- if a threshold is active, these values should reflect the current threshold result
-- if no threshold is active, display a clear neutral state such as “threshold not applied”
-
-Keep the logic consistent with the current threshold/session state model.
-
----
-
-### Multiple histogram windows
-
-The user should be able to open multiple histogram windows as fixed snapshots.
-
-Requirements:
-- opening a histogram should not replace a previous histogram window
-- each histogram window should represent the map state at the moment it was opened
-- later map switching in the main window should not retroactively change already opened histogram windows
-
-This is important for visual comparison between criteria.
+Check:
+- which metrics are cheap
+- which metrics are expensive
+- whether mixed raw/processed policies affect cost
+- whether spectral metrics cause repeated FFT overhead
 
 ---
 
-### Toolbar / action integration
+### Reuse / recomputation analysis
 
-Add a simple GUI action to open the histogram of the current displayed map.
+Inspect whether the current implementation performs unnecessary repeated work.
 
-This may be:
-- a toolbar action
-- a button
-- or another high-level action consistent with the current GUI style
+Examples to check:
+- repeated preprocessing of the same signals
+- repeated envelope computation
+- repeated FFT computation
+- repeated per-pixel conversions or allocations
+- repeated recomputation of already available metric results
+- repeated map rebuilds on GUI-side operations
 
-Keep it minimal.
+The goal is to identify obvious CPU-side inefficiencies before CUDA.
 
 ---
 
-### Session-state integration
+### Memory and data-layout analysis
 
-Integrate histogram behavior cleanly with current GUI session state.
+Inspect important memory-related behavior.
 
-Requirements:
-- histogram opening must use the current displayed metric/map
-- threshold line and threshold statistics must reflect the current threshold state for that map
-- histogram logic must not duplicate backend metric computation
-- histogram should use already computed session results
+Examples to check:
+- unnecessary `float64` use
+- unnecessary array copies
+- shape/layout transformations that may be expensive
+- whether current `(H, W, M)` usage is causing overhead in hot loops
+- whether temporary arrays are large and repeated
 
-Keep this GUI-side orchestration simple and explicit.
+This does not require a complete redesign.
+It is a diagnostic pass.
+
+---
+
+### Small safe performance fixes
+
+Small safe improvements are allowed only if they are:
+- local
+- low risk
+- clearly beneficial
+- do not redesign architecture
+
+Examples:
+- removing obvious repeated computations
+- avoiding unnecessary copies
+- simple dtype cleanup where safe
+- caching a derived representation inside one evaluation pass if already semantically correct
+
+Do not implement major optimization or CUDA in this iteration.
+
+---
+
+### Performance report
+
+Produce a short written report in the repository.
+
+Recommended file:
+- `docs/performance_notes.md`
+
+The report should summarize:
+- what was profiled
+- which stages dominate runtime
+- which metrics dominate runtime
+- what obvious inefficiencies were found
+- what should be optimized first on CPU
+- what should be first candidates for CUDA backend implementation
+
+Keep it practical and engineering-oriented.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- histogram overlays of multiple maps in one window
-- correlation plots
-- scatter plots between metrics
-- automatic threshold suggestion
-- log-scale histogram counts
-- valid-only checkbox if it complicates the design
-- histogram-based export
-- major GUI redesign
-- profiling / CUDA work
+- CUDA backend
+- large vectorization rewrite
+- major evaluator redesign
+- new metrics
+- GUI redesign
+- benchmark framework
+- synthetic workflows
+- broad caching framework
+- large architecture changes
 
-Keep this iteration focused on histogram-based threshold analysis.
+This iteration is for profiling and bottleneck discovery.
 
 ---
 
 ## File targets
 
-Expected modules to update:
+Expected modules/files to update only if needed:
 
-- `src/quality_tool/gui/main_window.py`
+- backend modules that require small safe local fixes
+- optional profiling helper scripts if useful
+- `docs/performance_notes.md`
 
-Expected new modules to create:
+Optional new file if helpful:
+- `scripts/profile_pipeline.py`
 
-- `src/quality_tool/gui/windows/histogram_window.py`
-
-Optional helper module may be added if truly needed, but keep structure minimal.
+Keep additions minimal.
 
 ---
 
 ## Testing expectations
 
-Add lightweight tests where practical.
+If any code is changed:
+- keep changes safe and covered where practical
+- do not weaken existing tests
+- ensure the full test suite still passes
 
-Preferred focus:
-- histogram window creation
-- histogram uses the currently displayed map
-- threshold line presence/absence behavior
-- map statistics calculation
-- threshold statistics calculation
-- multiple histogram windows behaving as fixed snapshots
-
-Keep tests reliable and lightweight.
+If profiling helpers/scripts are added:
+- they do not need heavy automated testing
+- they should be simple and reproducible
 
 ---
 
 ## Implementation preferences
 
-- keep the GUI thin and backend-driven
-- use already computed session results
-- do not duplicate metric computation logic
-- keep histogram windows simple and technical
-- keep statistics compact and readable
-- keep snapshot behavior explicit
-- preserve the current compare-window style
+- prefer measurement over guessing
+- prefer simple instrumentation over heavy tooling if enough
+- keep profiling code separate from production code where practical
+- keep performance notes concrete
+- distinguish clearly between:
+  - current bottlenecks
+  - safe immediate improvements
+  - later CUDA candidates
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- the user can open a histogram window for the current displayed map
-- the histogram shows the value distribution of that map
-- a threshold indicator line is shown when appropriate
-- basic map statistics are shown
-- threshold-related kept/rejected statistics are shown when appropriate
-- multiple histogram windows can be opened as snapshots
-- the current GUI workflow remains stable
+- realistic profiling has been performed on current real workflows
+- major bottlenecks are identified
+- obvious recomputation/copy issues are documented
+- any small safe fixes are implemented if clearly justified
+- a concise performance report exists
+- the project has a clear next-step basis for CPU cleanup and CUDA design
 
 ---
 
 ## Expected assistant workflow
 
-1. read `CLAUDE.md` and the docs, including `docs/gui_spec.md`
-2. summarize the intended histogram/threshold-analysis extension
-3. propose a short implementation plan
-4. implement only this iteration
-5. add lightweight tests where practical
-6. summarize created files, modified files, and any limitations
+1. read `CLAUDE.md` and the docs
+2. inspect the current backend and relevant GUI compute path
+3. propose a short profiling plan
+4. run profiling / instrumentation
+5. implement only small safe fixes if clearly justified
+6. write `docs/performance_notes.md`
+7. summarize findings, changes, and recommended next optimization steps

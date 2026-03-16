@@ -11,9 +11,14 @@ signals.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from quality_tool.core.models import MetricResult
+
+if TYPE_CHECKING:
+    from quality_tool.metrics.batch_result import BatchMetricArrays
 
 
 class FringeVisibility:
@@ -34,6 +39,8 @@ class FringeVisibility:
     # normalisation destroy the physical meaning of these values, so
     # this metric must always be evaluated on the raw signal.
     input_policy: str = "raw"
+
+    needs_spectral: bool = False
 
     def evaluate(
         self,
@@ -78,3 +85,46 @@ class FringeVisibility:
             score=float(visibility),
             features={"i_max": i_max, "i_min": i_min},
         )
+
+    def evaluate_batch(
+        self,
+        signals: np.ndarray,
+        z_axis: np.ndarray | None = None,
+        envelopes: np.ndarray | None = None,
+        context: dict | None = None,
+    ) -> BatchMetricArrays:
+        """Vectorised evaluation over a chunk of signals.
+
+        Parameters
+        ----------
+        signals : np.ndarray
+            2-D array of shape ``(N, M)``.
+
+        Returns
+        -------
+        BatchMetricArrays
+        """
+        from quality_tool.metrics.batch_result import BatchMetricArrays
+
+        n = signals.shape[0]
+        i_max = np.max(signals, axis=1)
+        i_min = np.min(signals, axis=1)
+        denom = i_max + i_min
+
+        scores = np.full(n, np.nan)
+        valid = np.ones(n, dtype=bool)
+
+        # Invalid: any signal with negative values
+        neg_mask = i_min < 0.0
+        valid[neg_mask] = False
+
+        # Invalid: zero denominator
+        zero_mask = denom == 0.0
+        valid[zero_mask] = False
+
+        ok = valid
+        with np.errstate(divide="ignore", invalid="ignore"):
+            scores[ok] = (i_max[ok] - i_min[ok]) / denom[ok]
+
+        features = {"i_max": i_max, "i_min": i_min}
+        return BatchMetricArrays(scores=scores, valid=valid, features=features)
