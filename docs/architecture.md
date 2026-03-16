@@ -2,16 +2,24 @@
 
 ## 1. Purpose
 
-`Quality_tool` is an internal tool for quality analysis of WLI correlogram signals.
+This document defines the architecture of `Quality_tool`.
 
-The goal of the system is:
-- to load real signal data from supported sources;
-- to convert all data into one unified internal representation;
-- to evaluate quality criteria on all pixel signals;
-- to produce 2D quality maps and threshold masks;
-- to support future extension toward additional metrics, envelope methods, and research workflows.
+`Quality_tool` is a modular WLI research workbench with a practical real-data-first core.
+Its current purpose is to:
 
-The architecture is intentionally real-data-first and minimal for v0.1.
+- load real WLI signal data,
+- normalize it into a unified internal representation,
+- evaluate signal-quality criteria,
+- build 2D result maps,
+- apply threshold-based masking,
+- support interactive inspection through a thin GUI layer,
+- remain extensible toward broader experimentation workflows.
+
+The architecture should support:
+- stable reference CPU computation,
+- future performance work,
+- future CUDA backend integration,
+- rapid addition of new metrics and derived representations.
 
 ---
 
@@ -23,36 +31,40 @@ After loading, the rest of the pipeline must work independently of the original 
 
 High-level pipeline:
 
-Input -> Load -> Normalize to SignalSet -> Optional preprocessing / optional envelope -> Evaluate metric -> Threshold -> Visualize / Export
+Input -> Load -> Normalize to SignalSet -> Optional preprocessing / ROI / envelope / spectral derivation -> Evaluate metric(s) -> Build result maps -> Threshold / mask -> Visualize / export
 
 This gives:
-- one stable internal data model;
-- simple support for multiple input formats;
-- easy addition of new metrics;
-- easy addition of new envelope methods;
-- direct spatial interpretation of results.
+- one stable internal data model,
+- clean separation between IO and analysis,
+- consistent behavior across input formats,
+- direct spatial interpretation of results,
+- a stable base for future acceleration backends.
 
 ---
 
-## 3. Scope of v0.1
+## 3. Scope of the current architecture
 
-This architecture targets a first practical version focused on real data only.
+This architecture currently covers:
 
-Supported input types:
-1. image stack (`.tif`, `.tiff`)
-2. text matrix (`.txt`)
+- real-data loading,
+- metadata parsing,
+- z-axis handling,
+- preprocessing,
+- ROI extraction,
+- envelope support,
+- spectral support,
+- metric evaluation,
+- thresholding,
+- histogram/statistical inspection support,
+- a thin desktop GUI over the backend.
 
-Supported sidecar files:
-- acquisition info file (for metadata)
-- optional `z_axis.txt`
+Out of scope for the current architecture:
+- synthetic signal generation,
+- benchmark orchestration,
+- large-scale experiment management,
+- CUDA implementation itself.
 
-Out of scope for v0.1:
-- synthetic signal generation
-- benchmark framework
-- metric correlation analysis
-- advanced export formats
-- CLI workflows
-- complex agent orchestration
+The architecture should still remain compatible with those future directions.
 
 ---
 
@@ -60,7 +72,7 @@ Out of scope for v0.1:
 
 ## 4.1 Canonical signal format
 
-The canonical internal representation of all loaded datasets is:
+The canonical internal representation of loaded datasets is:
 
 ```python
 signals.shape == (H, W, M)
@@ -76,11 +88,11 @@ This format must be used regardless of input source.
 ### Rationale
 
 This is preferred over `(N, M)` because:
-- signals are naturally tied to image pixels;
-- metric results are naturally spatial maps;
-- threshold masks are naturally 2D;
-- visualization becomes simpler;
-- no separate mapping stage is needed for most outputs.
+- signals are tied to image pixels,
+- metric outputs are naturally spatial maps,
+- threshold masks are naturally 2D,
+- visualization becomes simpler,
+- no separate mapping stage is required for most outputs.
 
 For internal batch computation, temporary reshaping is allowed:
 
@@ -133,22 +145,23 @@ class SignalSet:
 `width` and `height` are always required.
 
 They must come from one of the following:
-- explicit user input;
-- parsed acquisition metadata.
+- explicit user input,
+- parsed acquisition metadata,
+- frame dimensions in the case of image-stack loading.
 
 Loading is invalid if width and height cannot be determined.
 
 This simplifies:
-- shape validation;
-- 2D metric outputs;
-- 2D threshold masks;
+- shape validation,
+- 2D metric outputs,
+- 2D threshold masks,
 - export and visualization logic.
 
 ---
 
 ## 4.4 Z-axis policy
 
-The system supports exactly two modes:
+The system supports exactly two current modes:
 
 ### Mode A — explicit physical z-axis
 If `z_axis.txt` exists, it is loaded as a 1D array of length `M` and used as the dataset z-axis.
@@ -169,7 +182,7 @@ This means the signal is represented sample-by-sample without physical units.
 
 ## 4.5 Normalized metadata policy
 
-Sidecar acquisition info files may exist for both image stack and txt input.
+Sidecar acquisition info files may exist for both image-stack and txt input.
 
 These files may contain many fields, but only useful normalized metadata should be stored.
 
@@ -220,18 +233,63 @@ Modules:
 - `z_axis_loader.py`
 
 Responsibilities:
-- load image stack or txt matrix
-- determine `width` and `height`
-- normalize signals to shape `(H, W, M)`
-- parse useful sidecar metadata
-- load or generate `z_axis`
-- return a valid `SignalSet`
+- load image-stack or txt-matrix data,
+- determine `width` and `height`,
+- normalize signals to shape `(H, W, M)`,
+- parse useful sidecar metadata,
+- load or generate `z_axis`,
+- return a valid `SignalSet`.
 
 The IO layer must not evaluate metrics.
 
 ---
 
-## 5.2 Core model layer
+## 5.2 Input contracts
+
+### Image stack input
+
+For this project, image-stack input is defined as:
+
+- a directory containing sequential TIFF frames,
+- files named in a stable ordered pattern such as:
+  - `Image_00001.tif`
+  - `Image_00002.tif`
+  - ...
+- each file represents one z-slice / signal sample layer.
+
+The image-stack loader must:
+1. accept a directory path,
+2. discover TIFF frame files,
+3. sort them in numeric order,
+4. validate that all frames have the same `(H, W)`,
+5. stack them into `(H, W, M)`.
+
+Associated files may exist in the same directory:
+- `image_stack_info.txt`
+- `z_axis.txt`
+
+Single multipage TIFF is not the primary contract of this project.
+
+### TXT matrix input
+
+TXT input is defined as:
+- a matrix of shape `(N, M)`
+- where `N == width * height`
+
+The txt loader must:
+1. read the matrix,
+2. validate `N == width * height`,
+3. reshape into `(H, W, M)`,
+4. attach metadata if available,
+5. load or generate `z_axis`.
+
+Associated files may exist beside the txt file:
+- `image_stack_info.txt` or equivalent sidecar info file
+- `z_axis.txt`
+
+---
+
+## 5.3 Core model layer
 
 The core model layer defines the main internal dataclasses.
 
@@ -241,115 +299,263 @@ Main entities:
 - `MetricMapResult`
 - `ThresholdResult`
 
-This layer should remain small and stable.
+This layer should remain small, explicit, and stable.
 
 ---
 
-## 5.3 Preprocessing layer
+## 5.4 Preprocessing layer
 
 The preprocessing layer contains explicit operations applied to signals before metric evaluation.
 
 Examples:
-- baseline subtraction
-- normalization
-- smoothing
-- ROI extraction
+- baseline subtraction,
+- normalization,
+- smoothing,
+- ROI extraction.
 
 Preprocessing must be:
-- explicit
-- configurable
-- reproducible
-- easy to extend
+- explicit,
+- configurable,
+- reproducible,
+- easy to extend.
 
-No hidden preprocessing should be buried inside metrics unless clearly documented.
+No hidden preprocessing should be buried inside metrics unless clearly documented as part of the metric’s own definition.
+
+The preprocessing layer provides both per-signal functions (`basic.py`) and vectorized batch equivalents (`batch.py`) for use by the evaluator.
 
 ---
 
-## 5.4 Envelope layer
+## 5.5 ROI layer
 
-Envelope computation must be treated as a separate extendable subsystem.
+ROI extraction is treated as an explicit part of signal preparation.
+
+Purpose:
+- crop a local segment from a signal,
+- evaluate downstream operations on that segment.
+
+Current main parameter:
+- `segment_size`
+
+Current centering behavior:
+- the architecture must allow different centering modes,
+- current default mode is based on the raw-signal maximum.
+
+ROI is not implicitly applied to all metrics.
+It is part of the processing pipeline and must be selected explicitly.
+
+---
+
+## 5.6 Envelope layer
+
+Envelope computation is a separate extensible subsystem.
 
 Reason:
-- many metrics will need an envelope;
-- envelope is also relevant for WLI height-related workflows;
-- different envelope computation methods may need to be compared.
+- many metrics may use envelope information,
+- envelope is also useful for signal inspection and broader WLI workflows,
+- different envelope methods may need to be compared.
 
-This layer should provide:
-- a common interface for envelope methods
-- a registry of available methods
-- easy addition of new envelope algorithms
+The layer should provide:
+- a common interface for envelope methods,
+- a registry of available methods,
+- reusable envelope computation independent of any one metric.
 
 Envelope must not be hardcoded inside one specific metric.
 
----
+The current Hilbert-based implementation must expose the envelope itself, not the raw analytic signal.
 
-## 5.5 Metrics layer
-
-The metrics layer contains quality criteria implementations.
-
-Responsibilities:
-- evaluate a single signal
-- optionally use envelope information
-- return scalar score
-- return optional diagnostic features
-- handle invalid cases gracefully
-
-Metrics must be easy to extend.
+Envelope methods may optionally provide a `compute_batch` method for vectorized evaluation over a 2-D `(N, M)` array of signals. The evaluator will prefer `compute_batch` when available and fall back to per-signal `compute` otherwise.
 
 ---
 
-## 5.6 Evaluation layer
+## 5.7 Spectral layer
 
-The evaluation layer runs a chosen metric on all pixel signals.
+Spectral computation is also a separate derived-representation layer.
+
+Reason:
+- multiple metrics may use FFT-derived information,
+- spectral inspection is useful in the GUI,
+- future performance work will likely target this layer.
+
+The spectral layer should provide a simple shared API that returns a consistent spectral representation.
+
+Current expected output is intentionally minimal:
+- frequencies
+- amplitude spectrum
+
+The spectral layer must remain independent of any specific metric.
+
+---
+
+## 5.8 Metrics layer
+
+The metrics layer contains signal-quality criteria implementations.
 
 Responsibilities:
-- iterate over all signals
-- apply preprocessing if configured
-- compute envelope if required
-- evaluate metric
-- collect results
-- return 2D metric outputs
+- evaluate a single signal,
+- optionally use derived representations such as envelope or spectrum,
+- return scalar score,
+- return optional diagnostic features,
+- handle invalid cases gracefully.
+
+Metrics must remain easy to add and test.
+
+---
+
+## 5.9 Metric input policy
+
+Each metric must declare which signal representation it is allowed to use.
+
+Current minimal policy:
+- `raw`
+- `processed`
+
+### Meaning
+
+- `raw` means the metric must evaluate the original signal from the dataset and must ignore preprocessing / ROI transformations for its input.
+- `processed` means the metric evaluates the current processed signal path produced by the active preprocessing / ROI pipeline.
+
+This policy must be defined with the metric or its metadata, not implemented as ad hoc GUI logic.
+
+This keeps evaluation semantics explicit and makes future metric addition safer.
+
+The policy system should remain minimal for now, but should be extensible later toward more constrained requirements if needed.
+
+---
+
+## 5.10 Evaluation layer
+
+The evaluation layer runs metrics on all signals of a `SignalSet`.
+
+Responsibilities:
+- iterate over all pixel signals,
+- prepare raw signal and processed signal representations as needed,
+- choose the correct effective signal according to the metric input policy,
+- optionally compute envelope,
+- optionally compute spectral representation when the metric declares `needs_spectral`,
+- pass the correct context into the metric,
+- collect results,
+- return 2D metric outputs.
 
 Because the canonical signal representation is `(H, W, M)`, metric outputs should naturally be `(H, W)`.
 
+The evaluator must keep input-selection logic explicit and readable.
+
 ---
 
-## 5.7 Thresholding layer
+## 5.11 Batch evaluation architecture
 
-The thresholding layer applies simple keep/reject logic to metric maps.
+The evaluator uses a chunked batch-evaluation strategy for performance.
+
+### Execution model
+
+Signals are reshaped from `(H, W, M)` to `(N, M)` and processed in configurable chunks (default chunk size: 50,000 signals). This bounds memory usage while enabling vectorized computation within each chunk.
+
+### Batch metric interface
+
+Metrics may optionally implement `evaluate_batch` for vectorized evaluation over a 2-D chunk of `(N, M)` signals. The evaluator will prefer `evaluate_batch` when available and fall back to the per-signal `evaluate` otherwise.
+
+Batch evaluation returns a `BatchMetricArrays` container:
+
+```python
+from dataclasses import dataclass
+import numpy as np
+
+@dataclass
+class BatchMetricArrays:
+    scores: np.ndarray              # shape = (N,), invalid entries are np.nan
+    valid: np.ndarray               # shape = (N,), boolean
+    features: dict[str, np.ndarray] # each value is shape = (N,)
+```
+
+This flat-array representation avoids per-pixel object overhead and enables efficient aggregation into `(H, W)` result maps.
+
+### Batch preprocessing
+
+The preprocessing layer provides vectorized batch equivalents of per-signal functions in `preprocessing/batch.py`:
+- `subtract_baseline_batch`
+- `normalize_amplitude_batch`
+- `smooth_batch`
+- `extract_roi_batch`
+
+The evaluator auto-resolves per-signal preprocessing functions to their batch equivalents when available.
+
+### Conditional spectral computation
+
+The evaluator only computes batch FFT when the metric declares `needs_spectral = True`. Spectral results are passed to the metric via the `context` dict.
+
+---
+
+## 5.12 Thresholding layer
+
+The thresholding layer applies simple keep/reject logic to a metric map.
 
 Responsibilities:
-- apply threshold rule to a metric map
-- produce binary mask
-- compute basic statistics if needed
+- apply threshold rule to a source metric map,
+- produce binary mask,
+- compute summary statistics,
+- keep thresholding non-destructive.
 
-The threshold output must naturally follow image layout.
+Threshold output must naturally follow image layout.
 
----
+### Current semantic model
+- thresholding produces a separate `ThresholdResult`
+- the original score map remains unchanged
+- a mask may be produced from one metric and applied as a display/filter layer to another displayed map in the GUI
 
-## 5.8 Visualization layer
-
-The visualization layer is responsible for:
-- plotting selected signals
-- showing histograms of metric values
-- displaying quality maps
-- displaying binary masks
-
-Visualization must remain thin and not perform hidden data transformations.
+This distinction must remain explicit.
 
 ---
 
-## 5.9 Export layer
+## 5.13 Histogram / distribution analysis layer
 
-The export layer is intentionally minimal in v0.1.
+Histogram-based inspection is part of the analysis layer built on top of existing metric maps.
 
-Supported export outputs:
-- quality map as `.txt`
-- threshold mask as `.txt`
+Responsibilities:
+- visualize value distribution of a currently selected metric map,
+- show threshold position on that distribution,
+- provide compact descriptive statistics,
+- provide kept/rejected statistics when thresholding is active.
 
-Both exports are saved as 2D matrices.
+Histogram windows operate on already computed session results.
+They do not perform metric computation themselves.
 
-No additional export formats are required in v0.1.
+---
+
+## 5.14 Visualization / GUI layer
+
+The GUI is a thin desktop layer over the backend.
+
+Its purpose is to provide:
+- dataset loading,
+- map viewing,
+- signal inspection,
+- metric selection,
+- threshold interaction,
+- histogram inspection,
+- comparison windows.
+
+The GUI must not duplicate backend logic for:
+- loading,
+- preprocessing,
+- ROI,
+- envelope,
+- spectral computation,
+- metric evaluation,
+- thresholding.
+
+The GUI should remain an orchestration and visualization layer only.
+
+---
+
+## 5.15 Export layer
+
+The export layer remains intentionally simple.
+
+Current required outputs:
+- quality/result maps as `.txt`
+- masks as `.txt`
+
+Additional export functionality may be added later, but the architecture should keep export separate from GUI widgets and separate from metric computation logic.
 
 ---
 
@@ -360,12 +566,12 @@ No additional export formats are required in v0.1.
 Represents the result of evaluating one signal.
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class MetricResult:
     score: float
-    features: dict
+    features: dict = field(default_factory=dict)
     valid: bool = True
     notes: str = ""
 ```
@@ -383,7 +589,7 @@ class MetricResult:
 Represents the aggregated metric output for a full image.
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 
 @dataclass
@@ -391,8 +597,8 @@ class MetricMapResult:
     metric_name: str
     score_map: np.ndarray                # shape = (H, W)
     valid_map: np.ndarray                # shape = (H, W)
-    feature_maps: dict[str, np.ndarray]
-    metadata: dict
+    feature_maps: dict[str, np.ndarray] = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)
 ```
 
 ### Meaning
@@ -415,65 +621,58 @@ import numpy as np
 @dataclass
 class ThresholdResult:
     threshold: float
-    keep_rule: str                       # e.g. "score >= threshold"
+    keep_rule: str                       # current logic remains explicit
     mask: np.ndarray                     # shape = (H, W)
     stats: dict | None = None
 ```
 
 ### Meaning
 - `threshold`: threshold value
-- `keep_rule`: threshold logic
+- `keep_rule`: threshold logic description
 - `mask`: binary valid/invalid mask
 - `stats`: optional summary statistics
 
 ---
 
-## 7. Input contracts
+## 7. Metric interface
 
-## 7.1 Image stack loader
+Recommended metric interface:
 
-### Input
-- path to `.tif` / `.tiff`
-- optional explicit path to info file
-- optional explicit path to `z_axis.txt`
+```python
+from typing import Protocol, runtime_checkable
+import numpy as np
 
-### Output
-A valid `SignalSet`.
+@runtime_checkable
+class BaseMetric(Protocol):
+    name: str
+    input_policy: str
 
-### Logic
-1. load image stack
-2. determine stack dimension order
-3. interpret each pixel across stack depth as one signal
-4. normalize data to `(H, W, M)`
-5. determine `width` and `height`
-6. parse sidecar info file if available
-7. load `z_axis.txt` if available
-8. otherwise create index-based z-axis
-9. return `SignalSet`
+    def evaluate(
+        self,
+        signal: np.ndarray,
+        z_axis: np.ndarray | None = None,
+        envelope: np.ndarray | None = None,
+        context: dict | None = None,
+    ) -> MetricResult:
+        ...
+```
 
----
+### Required attributes
+- `name`: unique metric identifier
+- `input_policy`: declares whether the metric uses `raw` or `processed` signal input
 
-## 7.2 TXT matrix loader
+### Optional attributes
+- `needs_spectral`: when `True`, the evaluator precomputes batch FFT and passes spectral data via the `context` dict. Defaults to `False` when absent.
 
-### Input
-- path to `.txt`
-- `width`
-- `height`
-- optional parsing settings
-- optional explicit path to info file
-- optional explicit path to `z_axis.txt`
+### Optional methods
+- `evaluate_batch`: vectorized evaluation over `(N, M)` signals, returning `BatchMetricArrays`. The evaluator prefers this when available.
 
-### Output
-A valid `SignalSet`.
-
-### Logic
-1. load matrix of shape `(N, M)`
-2. validate that `N == width * height`
-3. reshape signals to `(H, W, M)`
-4. parse sidecar info file if available
-5. load `z_axis.txt` if available
-6. otherwise create index-based z-axis
-7. return `SignalSet`
+### Rules
+- metric must return one scalar score
+- metric may use envelope if needed
+- metric may use spectral/context data if needed
+- metric must not modify input arrays in-place
+- metric should fail gracefully through `valid=False` when possible
 
 ---
 
@@ -505,85 +704,68 @@ class BaseEnvelopeMethod(Protocol):
 - the method must not modify input arrays in-place
 - new methods must be easy to register
 
----
-
-## 9. Metric interface
-
-Recommended metric interface:
-
-```python
-from typing import Protocol
-import numpy as np
-
-class BaseMetric(Protocol):
-    name: str
-
-    def evaluate(
-        self,
-        signal: np.ndarray,
-        z_axis: np.ndarray | None = None,
-        envelope: np.ndarray | None = None,
-        context: dict | None = None,
-    ) -> MetricResult:
-        ...
-```
-
-### Rules
-- metric must return one scalar score
-- metric may use envelope if needed
-- metric may return useful diagnostic features
-- metric should fail gracefully through `valid=False` when possible
-- metric must not modify input arrays in-place
+### Optional batch support
+Envelope methods may implement `compute_batch(signals, z_axis=None, context=None)` for vectorized `(N, M)` input. The evaluator will use it when available.
 
 ---
 
-## 10. ROI extraction policy
-
-ROI extraction must be supported as an explicit preprocessing step.
-
-Purpose:
-- to crop a local segment from a longer signal
-- to evaluate metrics only around the most relevant region
-
-The main parameter is:
-- `segmentSize`
-
-The extracted segment must have length `segmentSize`.
-
-### Centering policy
-The architecture must allow different future centering methods.
-
-Examples:
-- `raw_max`
-- `envelope_max`
-- other future strategies
-
-For v0.1, the default centering method is:
-- `raw_max`
-
-This means ROI is centered around the maximum of the raw signal.
-
----
-
-## 11. Standard evaluation flow
+## 9. Standard evaluation flow
 
 The standard evaluation flow is:
 
 1. Load data into `SignalSet`
-2. Optionally preprocess signals
-3. Optionally compute envelope
-4. Evaluate one metric for each pixel signal
-5. Aggregate results into a `MetricMapResult`
-6. Apply threshold to produce `ThresholdResult`
-7. Visualize or export results
+2. Keep raw signal available
+3. Optionally prepare processed signal path
+4. Optionally compute envelope on the effective signal path where appropriate
+5. Optionally compute spectral representation where appropriate
+6. Evaluate one or more metrics, each using its declared input policy
+7. Aggregate results into `MetricMapResult`
+8. Optionally apply threshold to produce `ThresholdResult`
+9. Visualize or export results
 
 Because spatial structure is preserved from the start, metric results and masks are already image-shaped.
 
 ---
 
+## 10. Result reuse / session semantics
+
+Computed results may be reused within a session, but reuse must respect evaluation semantics.
+
+### Rule
+Result reuse must depend on:
+- dataset identity,
+- metric identity,
+- effective signal path semantics.
+
+### Practical implication
+- raw-input metrics may remain reusable across preprocessing-setting changes that do not affect raw input
+- processed-input metrics must depend on the relevant processing configuration
+
+This should remain simple, explicit, and correct.
+A large caching framework is not required at this stage.
+
+---
+
+## 11. GUI state semantics
+
+The GUI may store session state such as:
+- selected metrics,
+- computed metric results,
+- threshold results,
+- active displayed map,
+- active processing settings,
+- active envelope settings,
+- signal display mode,
+- histogram snapshot windows.
+
+However, GUI state must not become the source of truth for metric semantics.
+Backend rules such as metric input policy must stay in backend-side architecture.
+
+---
+
 ## 12. Repository structure
 
-Recommended minimal repository layout:
+Current repository layout:
 
 ```text
 quality_tool/
@@ -591,12 +773,15 @@ quality_tool/
     product_spec.md
     architecture.md
     roadmap.md
+    current_iteration.md
+    gui_spec.md                    # future
+    performance_notes.md           # future
+    metric_authoring.md            # future
 
   src/
     quality_tool/
       core/
         models.py
-        types.py
 
       io/
         image_stack_loader.py
@@ -606,37 +791,42 @@ quality_tool/
 
       preprocessing/
         basic.py
+        batch.py
         roi.py
 
       envelope/
         base.py
         registry.py
+        analytic.py
+
+      spectral/
+        fft.py
 
       metrics/
         base.py
         registry.py
+        batch_result.py
         baseline/
 
       evaluation/
         evaluator.py
         thresholding.py
 
-      visualization/
-        plots.py
-        maps.py
-
-      export/
-        txt_export.py
-
-      utils/
-        validation.py
+      gui/
+        app.py
+        main_window.py
+        widgets/
+        dialogs/
+        windows/
 
   tests/
     test_io/
     test_preprocessing/
     test_envelope/
+    test_spectral/
     test_metrics/
     test_evaluation/
+    test_gui/
 ```
 
 ---
@@ -645,62 +835,61 @@ quality_tool/
 
 ### Adding a new metric
 To add a new metric, it should be enough to:
-1. create the metric module
-2. implement the metric interface
-3. register the metric
-4. add tests
+1. create the metric module,
+2. implement the metric interface,
+3. declare its input policy,
+4. register it,
+5. add tests.
 
 ### Adding a new envelope method
 To add a new envelope method, it should be enough to:
-1. create the method module
-2. implement the envelope interface
-3. register the method
-4. add tests
+1. create the method module,
+2. implement the envelope interface,
+3. register the method,
+4. add tests.
 
 ### Adding a new input source
 To add a new source:
-1. implement a loader
-2. normalize output to `SignalSet`
-3. keep downstream logic unchanged
+1. implement a loader,
+2. normalize output to `SignalSet`,
+3. keep downstream logic unchanged.
 
 ### Adding a new metadata field
 To add a new metadata field:
-1. update metadata parsing
-2. map it to a normalized key
-3. keep compatibility with missing-field cases
+1. update metadata parsing,
+2. map it to a normalized key,
+3. keep compatibility with missing-field cases.
+
+### Adding a future execution backend
+Future execution backends such as CUDA should be introduced as alternative execution implementations of stable pipeline stages, not as a rewrite of project semantics.
+The CPU path remains the reference implementation unless explicitly replaced by validated parity logic.
 
 ---
 
 ## 14. Non-functional requirements
 
 The system should satisfy the following requirements:
-- code must stay simple and readable
-- every stage must be testable independently
-- no hidden transformations should happen silently
-- loaders should fail clearly on invalid shape assumptions
-- metadata parsing should be tolerant to missing optional fields
-- architecture must remain easy to extend
-- real-data workflow must stay the primary focus
+- code must stay simple and readable,
+- every stage must be testable independently,
+- no hidden transformations should happen silently,
+- loaders should fail clearly on invalid shape assumptions,
+- metadata parsing should be tolerant to missing optional fields,
+- architecture must remain easy to extend,
+- real-data workflow must stay the primary focus,
+- CPU implementation should remain a reliable reference path,
+- performance-oriented changes should preserve semantic correctness.
 
 ---
 
-## 15. v0.1 implementation priorities
+## 15. Current implementation priorities
 
-Recommended implementation order:
-1. core models
-2. metadata parser
-3. z-axis loader
-4. image stack loader
-5. txt matrix loader
-6. preprocessing basics
-7. ROI extraction
-8. envelope interface and first method
-9. metric interface and registry
-10. first baseline metrics
-11. evaluator
-12. thresholding
-13. visualization
-14. txt export
+The current practical priorities are:
+1. maintain a stable working real-data workbench
+2. preserve correctness of metric semantics
+3. expand metrics and experimentation capability
+4. improve usability of inspection and comparison
+5. perform profiling and performance-guided optimization
+6. introduce CUDA backend later as a separate validated step
 
 ---
 
@@ -708,11 +897,12 @@ Recommended implementation order:
 
 The architecture is built around one central idea:
 
-**all datasets become `SignalSet(signals[H, W, M])`, and all further processing preserves spatial structure.**
+**all datasets become `SignalSet(signals[H, W, M])`, and all further processing preserves spatial structure while explicitly controlling which signal representation each metric is allowed to use.**
 
-This gives:
-- a natural representation for WLI data
-- direct 2D metric outputs
-- simple threshold masks
-- easier visualization
-- a stable base for future growth
+That gives:
+- a natural representation for WLI data,
+- direct 2D metric outputs,
+- simple threshold masks,
+- clear separation between raw and processed metric semantics,
+- easier visualization,
+- a stable base for future performance work and future research expansion.

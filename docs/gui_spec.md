@@ -2,36 +2,33 @@
 
 ## 1. Purpose
 
-This document defines the GUI concept for `Quality_tool`.
+This document defines the GUI specification for `Quality_tool`.
 
-The GUI should provide a minimal but effective desktop interface for:
+The GUI provides a desktop interface for:
 - loading real WLI datasets,
-- computing and viewing result maps,
-- inspecting pixel-wise signals,
-- switching between available maps,
-- opening result maps in separate windows for visual comparison.
+- selecting and computing quality metrics,
+- viewing 2D result maps with threshold overlays,
+- inspecting pixel-wise signals in multiple display modes,
+- switching between computed metric maps,
+- comparing maps and distributions through standalone windows.
 
-The GUI must remain a thin layer over the existing backend and must not duplicate core logic inside the interface.
+The GUI is a thin layer over the backend and must not duplicate core logic.
 
 ---
 
 ## 2. GUI philosophy
 
-The GUI should be designed as:
+The GUI is designed as:
 
 **a generic 2D map viewer + signal inspector**
 
-This is the core idea of the interface.
-
-The GUI must not be treated as a special-purpose “quality map window” only.  
-The same main visual structure should later support:
-- quality maps,
+The same main visual structure supports:
+- metric score maps,
 - threshold masks,
-- height maps,
-- future feature maps.
+- masked score maps,
+- future feature maps and height maps.
 
-The GUI should stay:
-- minimal,
+The GUI should remain:
 - technically clear,
 - visually focused on data,
 - easy to extend,
@@ -39,375 +36,433 @@ The GUI should stay:
 
 ---
 
-## 3. Scope of GUI v0.1
+## 3. Main window layout
 
-GUI v0.1 is intentionally minimal.
+The GUI uses one main application window structured around two paired sections, each with a right-side tool panel:
 
-It should support:
-- loading a dataset,
-- selecting a metric,
-- computing a result,
-- displaying one main 2D map,
-- displaying the signal of the selected pixel,
-- switching between available map types,
-- opening the current map in a separate comparison window,
-- showing dataset and run information on demand,
-- exporting available outputs through the backend when supported.
+    +--------------------------------------------------------------+
+    | Toolbar                                                       |
+    | (Load | Metrics… Settings… Compute | Map View | Compare       |
+    |  Histogram Info Export)                                        |
+    +--------------------------------------------------------------+
+    |                                    |                          |
+    |         Map viewer                 |   Map tools panel        |
+    |                                    |   (threshold controls)   |
+    |                                    |                          |
+    +--------------------------------------------------------------+
+    |                                    |                          |
+    |         Signal inspector           |   Signal tools panel     |
+    |                                    |   (display mode,         |
+    |                                    |    envelope toggle)      |
+    +--------------------------------------------------------------+
+    | Status bar                                                    |
+    +--------------------------------------------------------------+
 
-GUI v0.1 should not try to expose the full future research-platform complexity.
+The map section and signal section are separated by a vertical splitter with a default 3:1 ratio (map section larger). Each section is a horizontal pair of the main viewer/inspector and a narrow tool panel.
 
 ---
 
-## 4. Main window concept
+## 4. Map viewer
 
-The GUI should use one main application window.
-
-Its structure should be centered around two visual areas:
-
-1. **Main map viewer**
-2. **Signal inspector**
-
-The main map viewer is the primary analysis area.  
-The signal inspector is the linked per-pixel inspection area.
-
-### Main layout idea
-
-    +--------------------------------------------------------------+
-    | Toolbar / action bar                                         |
-    +--------------------------------------------------------------+
-    |                                                              |
-    |                      Main map viewer                         |
-    |                                                              |
-    |                                                              |
-    +--------------------------------------------------------------+
-    |                      Signal inspector                        |
-    +--------------------------------------------------------------+
-    | Status bar                                                   |
-    +--------------------------------------------------------------+
-
-This should remain the dominant layout of the GUI.
-
-No permanent left-side control or information panel is required in v0.1.
-
----
-
-## 5. Main map viewer
-
-The main map viewer is the central visual element of the application.
+The map viewer is the central visual element of the application.
 
 ### Responsibilities
-- display one currently selected 2D map
+- display one currently selected 2D result map
 - support pixel selection by mouse click
-- visually indicate the selected pixel
-- allow switching between map types
-- allow opening the current map in a separate window
+- visually indicate the selected pixel with a red crosshair marker
+- support three display modes for the same metric map
 
-### Expected map types in v0.1
-At minimum, the viewer should be ready to display:
-- quality map
-- threshold mask
+### Display modes
 
-The viewer should be designed so that future map types can be displayed in the same place without redesigning the GUI.
+The toolbar View selector controls how the current metric map is rendered:
+
+- **score** — raw score map with viridis colormap and colorbar
+- **masked** — score map with rejected pixels shown in neutral gray, kept pixels retain the viridis colormap with color range anchored to the full original score map
+- **mask_only** — binary mask rendered as green (kept) / red (rejected), no colorbar
+
+Display mode switching does not recompute anything — it only changes the rendering of existing data.
 
 ### Interaction
-When the user clicks a pixel in the map:
-- that pixel becomes the active selection,
-- the signal inspector updates to show the corresponding signal,
-- the status bar updates with pixel coordinates and current value.
+When the user clicks a pixel:
+- the pixel is marked with a crosshair
+- the signal inspector updates to show the corresponding signal
+- the status bar shows pixel coordinates and the current map value at that pixel
 
 ### Visual requirements
-- the selected pixel should be clearly marked
+- the selected pixel is clearly marked with a red crosshair
 - the map area should remain large and easy to inspect
-- the viewer should prioritize readability over decorative UI elements
 
 ---
 
-## 6. Signal inspector
+## 5. Signal inspector
 
-The lower plot area is the signal inspector.
+The signal inspector is the lower plot area showing the signal corresponding to the currently selected pixel.
 
-Its purpose is to show the signal corresponding to the currently selected pixel in the main map viewer.
+### Display modes
 
-### Responsibilities
-- display the signal of the selected pixel
-- update when the selected pixel changes
-- use the current dataset z-axis representation
-- support future overlays without redesigning the widget
+The signal tools panel controls which representation is shown:
 
-### Initial v0.1 behavior
-At minimum, it should show:
-- raw signal of the selected pixel
+- **Raw** — original signal from the dataset, unprocessed
+- **Processed** — signal after applying the current preprocessing pipeline and optional ROI extraction
+- **Spectrum** — amplitude spectrum computed via FFT, displayed with logarithmic y-scale
 
-It should be designed so that future versions can also show:
-- envelope
-- ROI segment
-- processed signal
-- spectrum
+### Envelope overlay
 
-### Visual behavior
-- the plot should span the same width as the main map viewer
-- the plot should update immediately after pixel selection
-- axis labels should be simple and clear
+When the envelope overlay checkbox is enabled, the envelope (computed via the currently selected envelope method with baseline subtraction) is drawn as a dashed orange line over the signal plot. This overlay is available in Raw and Processed modes.
+
+### Behavior
+- the plot updates immediately when the selected pixel changes or display mode changes
+- all processing is done by the main window using backend functions — the inspector widget only receives pre-computed data
+- axis labels are simple and clear (z/intensity for signals, frequency/amplitude for spectra)
 
 ---
 
-## 7. Toolbar / action bar
+## 6. Map tools panel
 
-The GUI should provide a compact top toolbar or action bar.
+A narrow fixed-width panel (170px) beside the map viewer containing threshold controls.
 
-This should contain the primary user actions and high-level selections.
+### Controls
 
-### Recommended controls for v0.1
+- **Mask source** — combo box selecting which computed metric provides the score map for threshold evaluation. Populated from computed results.
+- **Threshold slider** — horizontal slider mapped to the score range of the mask-source metric (1000 discrete steps)
+- **Threshold spinbox** — numeric entry with 4 decimal places, bidirectionally synced with the slider
+- **Apply** — computes a ThresholdResult from the mask-source metric's score map at the current threshold value, switches the view to "masked" mode
+- **Reset** — clears the current threshold and switches back to "score" mode
 
-#### File / dataset actions
-- `Load dataset`
+The slider and spinbox range is automatically synced to the min/max of valid scores in the mask-source metric whenever the mask-source selection changes.
 
-#### Compute actions
-- `Compute`
+---
+
+## 7. Signal tools panel
+
+A narrow fixed-width panel (170px) beside the signal inspector containing display mode controls.
+
+### Controls
+
+- **Display mode combo** — Raw / Processed / Spectrum
+- **Envelope overlay checkbox** — toggle envelope overlay on/off
+
+---
+
+## 8. Toolbar
+
+A compact fixed toolbar at the top of the window.
+
+### Controls (left to right)
+
+#### Dataset
+- **Load** — opens the load dialog
+
+#### Computation
+- **Metrics…** — opens the metric selection dialog
+- **Settings…** — opens the processing settings dialog
+- **Compute** — runs all selected metrics on the loaded dataset
 
 #### Map selection
-- `Map type selector`
-  - for example: quality map / threshold mask / future map types
+- **Map** combo — selects which computed metric map to display; populated from computed results
+- **View** combo — selects display mode: score / masked / mask_only
 
-#### Metric selection
-- `Metric selector`
-  - select which metric is currently used for computation or display
+#### Inspection
+- **Compare** — opens the current map in a standalone comparison window
+- **Histogram** — opens a histogram window for the current metric map
+- **Info** — opens the information dialog
+- **Export** — exports the current map view as `.txt`
 
-#### Comparison actions
-- `Open current map in new window`
-
-#### Information
-- `Info`
-
-#### Export
-- `Export current result`
-  - only for outputs already supported by the backend
-
-### Design rule
-The toolbar should expose only high-level actions.  
-It should not become a dense control panel.
-
----
-
-## 8. Information display policy
-
-Dataset info, run settings, and technical details should **not** occupy permanent space in the main window.
-
-Instead, GUI v0.1 should provide an **Info** action.
-
-When requested, the GUI should show an information dialog or secondary panel containing relevant details such as:
-- dataset source
-- dimensions
-- signal length
-- whether metadata was found
-- z-axis mode
-- current metric
-- current threshold settings
-- current processing settings
-
-This keeps the main window visually clean while preserving access to technical information.
+The toolbar exposes only high-level actions. Detailed settings use dialogs.
 
 ---
 
 ## 9. Map switching
 
-The user must be able to switch which map is shown in the main map viewer.
+The Map combo in the toolbar is populated from the names of all computed metric results in the current session.
 
-Examples:
-- show one metric map
-- switch to another metric map
-- switch to threshold mask
-- later switch to height map
+When the user selects a different metric name:
+- the map viewer updates to show that metric's result
+- the display mode (score/masked/mask_only) is preserved
+- the selected pixel marker is preserved if possible
 
-This switching behavior is important because the same viewer is intended to serve as a generic 2D map viewer.
-
-The GUI should avoid creating a separate primary window for each map type.  
-One central viewer with user-controlled switching is preferred.
+This is the primary mechanism for comparing different metrics — compute multiple metrics, then switch between them using the combo.
 
 ---
 
 ## 10. Comparison windows
 
-The GUI should support opening the currently displayed map in a separate window.
-
-This is the primary comparison mechanism for v0.1.
-
-### Purpose
-It should allow the user to:
-- keep one result visible,
-- switch the main window to another result,
-- compare maps visually side by side.
+The Compare button opens a standalone window showing a fixed snapshot of the currently displayed map.
 
 ### Behavior
-- the separate comparison window should display a fixed snapshot of the currently selected map
-- it should not replace the main interactive window
-- multiple comparison windows may be opened if useful
+- the window displays a static copy of the data at the moment it was opened
+- it does not update when the main window changes
+- multiple comparison windows may be opened simultaneously
+- boolean mask data is rendered as green (kept) / red (rejected)
+- non-boolean data uses viridis colormap with a colorbar
+- windows auto-delete on close
 
-### Design principle
-Comparison should be implemented through additional viewer windows, not by overloading the main window with too many simultaneous panels.
-
----
-
-## 11. Status bar
-
-The GUI should include a simple status bar.
-
-Its purpose is to provide compact live information without cluttering the main interface.
-
-### Recommended contents
-- selected pixel coordinates
-- current displayed value at that pixel
-- current map type
-- current metric name
-- simple state messages such as loading / computing / done / error
-
-The status bar should remain lightweight.
+### Purpose
+Allows the user to keep one result visible while switching the main window to another result for side-by-side visual comparison.
 
 ---
 
-## 12. Processing and parameter controls
+## 11. Histogram windows
 
-GUI v0.1 should avoid a large permanent parameter sidebar.
+The Histogram button opens a standalone snapshot window for the currently displayed metric map.
 
-However, the user still needs access to processing and evaluation settings.
+### Content
+- histogram plot of valid pixel score values (50 bins)
+- if a threshold is active and built from the same metric, a red dashed vertical threshold line is drawn on the histogram
+- descriptive statistics panel (min, max, mean, median, std)
+- threshold statistics panel (valid pixels, kept, rejected, kept percentage) — shown only when a threshold is active for that metric
 
-The preferred approach is:
-- simple essential selections in the toolbar,
-- more detailed settings in dialogs when needed.
+### Behavior
+- the window captures a frozen snapshot of the metric map values at the time it is opened
+- it does not update when the main window changes
+- multiple histogram windows may be opened simultaneously
+- windows auto-delete on close
 
-### Suggested policy
-For v0.1:
-- keep directly visible controls minimal
-- open configuration dialogs for more detailed settings
-
-This is important because the intended users are engineers who usually do not need a constant reminder panel for parameters they already set.
+### Threshold applicability
+The threshold line and threshold statistics are only shown when the threshold was built from the same metric that is currently displayed. If the displayed metric is different from the mask-source metric, the histogram shows statistics without threshold information.
 
 ---
 
-## 13. GUI workflows
+## 12. Dialogs
 
-### Workflow A — basic map inspection
+### 12.1 Metrics selection dialog
+
+A checkbox-based dialog listing all registered metrics.
+
+- each metric appears as a labeled checkbox
+- previously selected metrics are pre-checked
+- returns the list of selected metric names on accept
+
+This supports multi-metric computation: the user selects which metrics to compute, and all selected metrics are evaluated when Compute is pressed.
+
+### 12.2 Processing settings dialog
+
+A modal dialog for configuring preprocessing, ROI, and envelope settings.
+
+#### Preprocessing group
+- **Baseline subtraction** — checkbox
+- **Normalize amplitude** — checkbox
+- **Smoothing** — checkbox
+
+#### ROI group
+- **Enable ROI** — checkbox
+- **Segment size** — spinbox (range 3–100,000, default 128)
+- **Centering mode** — fixed label "raw_max" (not user-selectable)
+
+#### Envelope group
+- **Enable envelope** — checkbox
+- **Method** — combo populated from the envelope registry
+
+Returns settings as a plain dict. When settings change, the main window invalidates cached results for processed-input metrics while preserving raw-input metric results.
+
+### 12.3 Load dialog
+
+A small dialog for choosing the loading method and parameters.
+
+- **Source type** combo — image_stack / txt_matrix
+- **Path** — browse button; directory selector for image_stack, file selector for txt_matrix
+- **Width / Height** spinboxes — enabled only for txt_matrix (range 1–100,000)
+
+Calls the appropriate backend loader on accept and returns a SignalSet.
+
+### 12.4 Information dialog
+
+A read-only scrollable dialog showing current session details as key-value pairs.
+
+Contents include:
+- source type, path, dimensions (H x W x M)
+- z-axis mode (file or index-based)
+- metadata presence and normalized fields
+- current preprocessing settings
+- ROI state and segment size
+- envelope state and method
+- list of computed metrics
+- currently displayed metric
+- mask-source metric
+- threshold value, keep rule, and kept pixel count
+
+---
+
+## 13. Session state model
+
+The main window maintains session state that drives all GUI behavior.
+
+### Core session state
+- **signal_set** — the loaded dataset (SignalSet or None)
+- **selected_metrics** — list of metric names chosen via the Metrics dialog
+- **computed_results** — dict mapping metric name to MetricMapResult
+- **current_map_name** — name of the metric currently shown in the map viewer
+- **display_mode** — current map display mode (score / masked / mask_only)
+- **mask_source_metric** — which metric's scores drive the threshold
+- **current_threshold** — ThresholdResult or None
+- **processing** — dict of preprocessing/ROI/envelope settings
+- **signal_display_mode** — Raw / Processed / Spectrum
+- **envelope_overlay** — boolean
+- **selected_pixel** — (row, col) or None
+
+### Result caching and reuse
+- computed metric results are cached in the session and reused across Compute actions
+- when processing settings change, results for metrics with `input_policy="processed"` are invalidated, while `input_policy="raw"` results are preserved
+- when a new dataset is loaded, all session state is cleared
+
+### Map combo and mask-source combo
+Both combos are populated from the keys of computed_results. When results are invalidated, the combos are refreshed and selections fall back to the first available result if the previous selection was removed.
+
+---
+
+## 14. Threshold model
+
+Thresholding is non-destructive and decoupled from the displayed metric.
+
+### Key concepts
+- the **mask-source metric** determines which score map is used to compute the threshold
+- the threshold produces a separate ThresholdResult with a binary mask
+- the mask can be applied as a display overlay on any metric's score map via the View mode selector
+- the original score maps are never modified
+
+### Workflow
+1. select a mask-source metric in the map tools panel
+2. adjust the threshold value via slider or spinbox
+3. press Apply — the threshold is computed and the view switches to "masked"
+4. switch the Map combo to view other metrics — the same mask overlay applies
+5. press Reset — the threshold is cleared and the view returns to "score"
+
+### Slider range
+The slider range auto-syncs to the min/max of valid scores in the mask-source metric. When the mask-source selection changes, the slider and spinbox are reset to the new range.
+
+---
+
+## 15. Export
+
+The Export button saves the currently displayed view as a `.txt` file via file dialog.
+
+- in **score** or **masked** mode: exports the score map as a 2D matrix
+- in **mask_only** mode: exports the binary mask as a 2D integer matrix (0/1)
+
+Export uses `np.savetxt` with `%.6g` formatting.
+
+---
+
+## 16. Status bar
+
+A single-line status bar at the bottom of the window.
+
+### Content
+- pixel coordinates and metric value on pixel selection: `Pixel (row, col) metric_name=value`
+- dataset info after loading: source type, dimensions, z-axis mode
+- computation progress: `Computing metric_name…`
+- computation summary: `N metric(s) available (X new, Y reused)`
+- threshold info: `Threshold value on metric_name (N kept)`
+- error and state messages
+
+---
+
+## 17. Backend integration
+
+The GUI calls backend functions for all data operations:
+- loading datasets (image_stack_loader, txt_matrix_loader)
+- preprocessing (subtract_baseline, normalize_amplitude, smooth)
+- ROI extraction (extract_roi)
+- envelope computation (envelope registry methods)
+- spectral computation (compute_spectrum)
+- metric evaluation (evaluate_metric_map)
+- thresholding (apply_threshold)
+
+The GUI does not duplicate any of this logic. All processing for signal display is performed by the main window using backend functions before passing pre-computed data to the inspector widget.
+
+---
+
+## 18. Workflows
+
+### Workflow A — basic multi-metric inspection
 1. Load dataset
-2. Select metric
+2. Open Metrics… dialog, select one or more metrics
 3. Press Compute
-4. View the resulting map
-5. Click a pixel
-6. Inspect its signal in the lower plot
+4. View the first metric's score map
+5. Switch between metrics using the Map combo
+6. Click pixels to inspect their signals
 
-### Workflow B — switch displayed result
-1. Compute one map
-2. Change metric or map type
-3. Compute again or switch to another available result
-4. Inspect the updated map in the same main viewer
+### Workflow B — threshold and mask overlay
+1. Compute one or more metrics
+2. Select a mask-source metric in the map tools panel
+3. Adjust threshold slider
+4. Press Apply
+5. View masked result — rejected pixels shown in gray
+6. Switch Map combo to another metric — same mask applies
+7. Switch View to mask_only to see the binary mask
+8. Press Reset to clear the threshold
 
 ### Workflow C — compare maps
-1. Compute a result
-2. Open current map in a new window
-3. Return to the main window
-4. Compute or select another map
-5. Compare visually
+1. Compute a metric, view its map
+2. Press Compare to snapshot the current view
+3. Switch to another metric or apply a threshold
+4. Press Compare again
+5. Arrange the standalone windows for side-by-side comparison
 
-### Workflow D — inspect technical details
+### Workflow D — histogram inspection
+1. Compute a metric
+2. Optionally apply a threshold
+3. Press Histogram
+4. Inspect the value distribution, threshold line, and statistics
+5. Open additional histograms for other metrics as needed
+
+### Workflow E — signal inspection modes
+1. Select a pixel in the map
+2. View the raw signal in the signal inspector
+3. Switch to Processed to see the preprocessed/ROI-extracted signal
+4. Switch to Spectrum to see the amplitude spectrum
+5. Enable envelope overlay to see the envelope on Raw or Processed view
+
+### Workflow F — inspect session info
 1. Load or compute data
-2. Click `Info`
-3. Review dataset and run information
-4. Close the info dialog and continue work
+2. Press Info
+3. Review dataset properties, processing settings, and computed metrics
+4. Close the dialog and continue work
 
 ---
 
-## 14. Out of scope for GUI v0.1
-
-GUI v0.1 should not include:
-- permanent left-side information/control panel
-- histogram panel
-- experiment manager
-- pipeline builder
-- multi-metric dashboard in the main window
-- benchmark controls
-- synthetic-data workflow controls
-- advanced workspace management
-- embedded scripting interface
-
-These can be added later if needed.
-
----
-
-## 15. Backend integration principles
-
-The GUI must remain a thin layer over the existing backend.
-
-It should call backend functionality for:
-- loading datasets
-- computing metrics
-- thresholding
-- retrieving signals for selected pixels
-- exporting results
-
-The GUI must not duplicate backend logic for:
-- signal processing
-- metric computation
-- thresholding
-- data parsing
-
-All such logic should stay in the core backend modules.
-
----
-
-## 16. Extensibility principles
-
-The GUI should be easy to extend in later versions.
-
-It should be designed so that the same main structure can support:
-- height maps
-- additional feature maps
-- envelope visualization
-- ROI visualization
-- spectrum visualization
-- richer processing configuration
-- comparison workflows
-
-The key extensibility rule is:
-
-**keep the main structure stable and extend behavior around it**
-
-That means:
-- keep the main map viewer generic
-- keep the lower plot as a general signal inspector
-- add dialogs and secondary windows rather than redesigning the main window repeatedly
-
----
-
-## 17. Visual design principles
+## 19. Visual design principles
 
 The GUI should feel:
-- technical
-- clean
-- focused
-- minimal
+- technical,
+- clean,
+- focused,
+- minimal.
 
 Priority should go to:
-- large readable visualization areas
-- simple controls
-- clear interactions
-- easy interpretation
+- large readable visualization areas,
+- simple controls,
+- clear interactions,
+- easy interpretation.
 
-The GUI should not attempt to look flashy.  
-Its value comes from clarity and speed of engineering inspection.
+The GUI's value comes from clarity and speed of engineering inspection.
 
 ---
 
-## 18. Summary
+## 20. Future extensions
 
-GUI v0.1 is a minimal desktop interface built around one central concept:
+The following are not currently implemented but the architecture supports them:
+- height maps and additional feature map types in the same viewer
+- additional centering modes for ROI extraction
+- richer comparison workflows (linked pixel selection across windows)
+- additional export formats
+
+These should be added through new dialogs and secondary windows rather than by redesigning the main window.
+
+---
+
+## 21. Summary
+
+The GUI is a desktop interface built around one central concept:
 
 **generic 2D map viewer + signal inspector**
 
 Core elements:
-- one main map viewer
-- one lower signal plot
-- one compact toolbar
-- one status bar
-- one on-demand information dialog
-- optional separate map comparison windows
+- one main map viewer with right-side threshold tools panel
+- one signal inspector with right-side display mode panel
+- one compact toolbar for actions and map/view switching
+- one status bar for context
+- modal dialogs for metrics selection, processing settings, loading, and info
+- standalone snapshot windows for comparison and histogram inspection
 
-This gives a simple but strong foundation for the first usable GUI while keeping future extension straightforward.
+The GUI remains a thin orchestration layer: all data processing is performed by the backend.
