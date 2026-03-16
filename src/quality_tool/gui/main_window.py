@@ -50,6 +50,7 @@ from quality_tool.gui.widgets.map_viewer import MapViewer
 from quality_tool.gui.widgets.signal_inspector import SignalInspector
 from quality_tool.gui.widgets.tool_panels import MapToolsPanel, SignalToolsPanel
 from quality_tool.gui.windows.compare_window import CompareWindow
+from quality_tool.gui.windows.histogram_window import HistogramWindow
 from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
@@ -114,6 +115,7 @@ class MainWindow(QMainWindow):
         self._current_map_name: str | None = None
         self._display_mode: str = "score"  # "score" | "masked" | "mask_only"
         self._compare_windows: list[CompareWindow] = []
+        self._histogram_windows: list[HistogramWindow] = []
 
         # Mask-source metric: which metric's score map drives the threshold.
         self._mask_source_metric: str | None = None
@@ -238,6 +240,10 @@ class MainWindow(QMainWindow):
         btn_compare = QPushButton("Compare")
         btn_compare.clicked.connect(self._on_compare)
         tb.addWidget(btn_compare)
+
+        btn_histogram = QPushButton("Histogram")
+        btn_histogram.clicked.connect(self._on_histogram)
+        tb.addWidget(btn_histogram)
 
         btn_info = QPushButton("Info")
         btn_info.clicked.connect(self._on_info)
@@ -446,6 +452,38 @@ class MainWindow(QMainWindow):
         win = CompareWindow(data, title=title)
         win.show()
         self._compare_windows.append(win)
+
+    def _on_histogram(self) -> None:
+        """Open a histogram window for the currently displayed map."""
+        name = self._current_map_name
+        if name is None or name not in self._computed_results:
+            self._status.showMessage("No map to show histogram for")
+            return
+
+        result = self._computed_results[name]
+        valid_values = result.score_map[result.valid_map]
+
+        # Determine threshold applicability: threshold must be active AND
+        # built from the same metric that is currently displayed.
+        tr = self._current_threshold
+        if tr is not None and self._mask_source_metric == name:
+            threshold_value = tr.threshold
+            keep_rule = tr.keep_rule
+            threshold_stats = dict(tr.stats) if tr.stats else None
+        else:
+            threshold_value = None
+            keep_rule = None
+            threshold_stats = None
+
+        win = HistogramWindow(
+            values=valid_values,
+            metric_name=name,
+            threshold_value=threshold_value,
+            keep_rule=keep_rule,
+            threshold_stats=threshold_stats,
+        )
+        win.show()
+        self._histogram_windows.append(win)
 
     def _on_info(self) -> None:
         info: dict[str, str] = {}

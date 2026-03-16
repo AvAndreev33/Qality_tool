@@ -496,3 +496,5 @@ src/quality_tool/gui/widgets/__pycache__/tool_panels.cpython-314.pyc
 tests/test_gui/__pycache__/test_processing_dialog.cpython-314-pytest-9.0.2.pyc
 src/quality_tool/gui/dialogs/__pycache__/processing_dialog.cpython-314.pyc
 tests/test_evaluation/__pycache__/test_input_policy.cpython-314-pytest-9.0.2.pyc
+tests/test_gui/__pycache__/test_histogram_window.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/gui/windows/__pycache__/histogram_window.cpython-314.pyc

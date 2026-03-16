@@ -2,164 +2,184 @@
 
 ## Iteration name
 
-Metric input policy refinement — raw vs processed signal contract
+Histogram and threshold analysis — distribution view for current map
 
 ## Goal
 
-Introduce an explicit metric input policy so that each metric can declare which signal representation it must use.
+Extend the GUI with a histogram-based analysis view for the currently displayed map.
 
-This iteration should make the pipeline robust for metrics that:
-- must use the raw signal,
-- may use the processed signal,
-- may later require envelope-based inputs or other constrained representations.
+This iteration should add:
+- a histogram window for the current displayed map
+- a threshold indicator line in the histogram
+- basic descriptive statistics for the current map
+- kept/rejected statistics based on the current threshold state
+- support for opening multiple histogram windows as fixed comparison snapshots
 
-The immediate practical case is:
-- `fringe_visibility` must be evaluated on the **raw signal only**
-
-This should be implemented as a general architectural refinement, not as a one-off special case.
+The goal is to improve the workflow of selecting and comparing quality criteria by making the distribution of map values visible and directly connected to thresholding.
 
 ---
 
 ## Why this iteration matters
 
-The project now supports:
-- preprocessing
-- ROI extraction
-- envelope computation
+The current GUI already supports:
+- loading datasets
 - multi-metric computation
-- GUI settings that affect processing
-- reuse of computed metric results in a session
+- map switching
+- threshold application
+- masked display
+- signal inspection
+- map comparison windows
 
-This means different metrics may need different effective inputs.
+But thresholding is still less interpretable than it should be.
 
-Examples:
-- `fringe_visibility` should use the raw signal because detrending / signed values destroy its physical meaning
-- other metrics may legitimately use processed signals
-- future metrics may require envelope-derived inputs
+To choose good thresholds and compare criteria properly, the user should be able to see:
+- how the current map values are distributed,
+- where the current threshold lies in that distribution,
+- how many pixels are kept or rejected.
 
-Without an explicit contract, metric evaluation becomes fragile and difficult to reason about.
-
-This iteration introduces the first clean version of that contract.
+This is directly useful for the engineering task of comparing signal-quality criteria.
 
 ---
 
 ## In scope
 
-### Metric input policy
+### Histogram window for current displayed map
 
-Introduce an explicit declared policy for metric input selection.
-
-At minimum, each metric should be able to declare whether it uses:
-- `raw`
-- `processed`
-
-This policy should live with the metric definition or metric metadata, not in ad hoc GUI conditionals.
-
-Keep this minimal and simple for now.
-
----
-
-### Immediate policy assignment
-
-For this iteration:
-- `fringe_visibility` must be declared as `raw`
-- existing processed-signal metrics may remain `processed` if that matches current behavior
-- if any current metric is ambiguous, choose the simplest documented policy and state it clearly
-
-Do not overbuild a large policy system yet.
-
----
-
-### Evaluator refinement
-
-Update the evaluator so that it can correctly choose the effective signal per metric.
+Add the ability to open a histogram window for the map currently shown in the main viewer.
 
 Requirements:
-- evaluator must have access to the raw signal
-- evaluator must be able to produce the processed signal when needed
-- evaluator must select the correct effective signal according to the metric input policy
-- evaluator must keep this logic explicit and readable
+- the histogram should be based on the currently displayed metric map
+- the histogram should open in a separate window
+- the histogram window should behave as a fixed snapshot of the current map state at the moment it is opened
+- multiple histogram windows may be opened for comparison
 
-This should work correctly during multi-metric computation.
-
-Example:
-- in one compute run, one metric may use raw
-- another metric may use processed
+This should mirror the current compare-window philosophy.
 
 ---
 
-### Processing pipeline interaction
+### Histogram content
 
-Clarify how preprocessing / ROI interact with the effective signal.
-
-For this iteration:
-- raw-only metrics must ignore preprocessing and ROI settings for their signal input
-- processed-signal metrics should continue using the current processing pipeline as already intended
-- if envelope is used by a metric, keep existing behavior consistent with the currently selected effective signal path
-
-Keep this as close as possible to the current architecture and behavior.
-
----
-
-### Computed result reuse / caching behavior
-
-Refine result reuse logic so that it respects metric input policy.
+The histogram should show the distribution of values of the current displayed map.
 
 Requirements:
-- raw-only metric results should not be invalidated by preprocessing changes that do not affect raw input
-- processed-signal metric results should still depend on the relevant processing configuration
-- the reuse / cache key logic should remain simple but correct
+- use the raw underlying score map of the currently selected metric as the histogram source
+- do not build the histogram from a destructively masked map
+- handle invalid pixels consistently and explicitly
+- if valid/invalid filtering is already naturally available, use only valid values for the histogram; otherwise document the chosen behavior clearly
 
-Do not introduce a large caching framework.
-Just make current reuse logic semantically correct.
+Keep the implementation simple and explicit.
 
 ---
 
-### GUI integration
+### Threshold indicator line
 
-The GUI must remain thin, but it should correctly reflect the new behavior.
+The histogram window should visually indicate the current threshold.
 
 Requirements:
-- GUI compute flow should still work with multi-metric computation
-- GUI should not decide raw-vs-processed behavior itself
-- GUI may display useful information about the effective input mode if simple and clean
-- no major GUI redesign is needed in this iteration
+- draw a clear vertical threshold line on the histogram
+- if the threshold for the currently displayed metric/map is active, the line should reflect its value
+- if no threshold is currently active, the histogram may either:
+  - show no line, or
+  - show the current slider value if that is already cleanly available
 
-If helpful and minimal, expose the effective input mode in:
-- info dialog
-- status text
-- or result/session metadata
+Choose the simplest behavior that stays consistent with the current GUI state model.
 
-But keep this optional if it remains clean.
+The histogram and thresholded map should remain visually consistent.
 
 ---
 
-### Documentation and code clarity
+### Basic map statistics
 
-Document the new metric-input behavior clearly in code where appropriate.
+Display simple descriptive statistics for the currently displayed map.
 
-At minimum, it should be clear:
-- why `fringe_visibility` is raw-only
-- how evaluator chooses effective signal input
-- how reuse behavior differs for raw vs processed metrics
+Recommended values:
+- min
+- max
+- mean
+- median
+- standard deviation
 
-This should reduce future confusion when adding new metrics.
+These may be shown:
+- inside the histogram window,
+- in a compact info area within that window,
+- or in another simple and readable form
+
+Keep it lightweight and clear.
+
+---
+
+### Threshold outcome statistics
+
+Display simple threshold-related statistics for the current map.
+
+Recommended values:
+- number of valid pixels
+- number of kept pixels
+- number of rejected pixels
+- kept fraction (or kept percentage)
+
+Requirements:
+- if a threshold is active, these values should reflect the current threshold result
+- if no threshold is active, display a clear neutral state such as “threshold not applied”
+
+Keep the logic consistent with the current threshold/session state model.
+
+---
+
+### Multiple histogram windows
+
+The user should be able to open multiple histogram windows as fixed snapshots.
+
+Requirements:
+- opening a histogram should not replace a previous histogram window
+- each histogram window should represent the map state at the moment it was opened
+- later map switching in the main window should not retroactively change already opened histogram windows
+
+This is important for visual comparison between criteria.
+
+---
+
+### Toolbar / action integration
+
+Add a simple GUI action to open the histogram of the current displayed map.
+
+This may be:
+- a toolbar action
+- a button
+- or another high-level action consistent with the current GUI style
+
+Keep it minimal.
+
+---
+
+### Session-state integration
+
+Integrate histogram behavior cleanly with current GUI session state.
+
+Requirements:
+- histogram opening must use the current displayed metric/map
+- threshold line and threshold statistics must reflect the current threshold state for that map
+- histogram logic must not duplicate backend metric computation
+- histogram should use already computed session results
+
+Keep this GUI-side orchestration simple and explicit.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- a large generalized policy engine
-- envelope-only / ROI-required policy types unless trivially needed
-- new metrics
-- GUI redesign
-- new preprocessing methods
-- CUDA / performance work
-- experiment manifests
-- synthetic workflows
+- histogram overlays of multiple maps in one window
+- correlation plots
+- scatter plots between metrics
+- automatic threshold suggestion
+- log-scale histogram counts
+- valid-only checkbox if it complicates the design
+- histogram-based export
+- major GUI redesign
+- profiling / CUDA work
 
-Keep this iteration narrow and architectural.
+Keep this iteration focused on histogram-based threshold analysis.
 
 ---
 
@@ -167,65 +187,62 @@ Keep this iteration narrow and architectural.
 
 Expected modules to update:
 
-- `src/quality_tool/metrics/base.py`
-- `src/quality_tool/metrics/baseline/fringe_visibility.py`
-- `src/quality_tool/evaluation/evaluator.py`
-- `src/quality_tool/gui/main_window.py` if needed for reuse/session-state correctness
-- any small supporting modules that currently hold metric/session metadata if needed
+- `src/quality_tool/gui/main_window.py`
 
-Expected tests to update/add:
+Expected new modules to create:
 
-- tests covering raw-only metric behavior
-- tests covering multi-metric runs with mixed input policies
-- tests covering reuse behavior for raw vs processed metrics
-- tests confirming preprocessing changes do not incorrectly affect raw-only metric evaluation
+- `src/quality_tool/gui/windows/histogram_window.py`
 
-Keep tests targeted and lightweight.
+Optional helper module may be added if truly needed, but keep structure minimal.
 
 ---
 
 ## Testing expectations
 
-Add tests for:
-- `fringe_visibility` always using raw signal
-- evaluator correctly mixing raw-only and processed metrics in one compute run
-- preprocessing changes not invalidating raw-only results unnecessarily
-- processed metrics still depending on the current processing configuration
-- GUI/session-level recompute behavior remaining correct where practical
+Add lightweight tests where practical.
 
-Keep tests reliable and focused on semantics.
+Preferred focus:
+- histogram window creation
+- histogram uses the currently displayed map
+- threshold line presence/absence behavior
+- map statistics calculation
+- threshold statistics calculation
+- multiple histogram windows behaving as fixed snapshots
+
+Keep tests reliable and lightweight.
 
 ---
 
 ## Implementation preferences
 
-- keep the solution minimal
-- avoid hardcoded GUI-side metric special cases
-- keep metric policy close to metric definitions
-- keep evaluator logic explicit and readable
-- keep reuse logic simple and correct
-- prefer a small clear contract now over a complex future-proof abstraction
+- keep the GUI thin and backend-driven
+- use already computed session results
+- do not duplicate metric computation logic
+- keep histogram windows simple and technical
+- keep statistics compact and readable
+- keep snapshot behavior explicit
+- preserve the current compare-window style
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- metrics can declare whether they use raw or processed signal input
-- `fringe_visibility` is enforced as raw-only
-- evaluator respects metric input policy during multi-metric computation
-- reuse behavior is correct for raw-only vs processed metrics
-- current GUI workflow still works
-- the behavior is clearly documented in code
-- tests cover the new semantics
+- the user can open a histogram window for the current displayed map
+- the histogram shows the value distribution of that map
+- a threshold indicator line is shown when appropriate
+- basic map statistics are shown
+- threshold-related kept/rejected statistics are shown when appropriate
+- multiple histogram windows can be opened as snapshots
+- the current GUI workflow remains stable
 
 ---
 
 ## Expected assistant workflow
 
-1. read `CLAUDE.md` and the docs
-2. summarize the intended metric-input-policy refinement
+1. read `CLAUDE.md` and the docs, including `docs/gui_spec.md`
+2. summarize the intended histogram/threshold-analysis extension
 3. propose a short implementation plan
 4. implement only this iteration
-5. add lightweight targeted tests
+5. add lightweight tests where practical
 6. summarize created files, modified files, and any limitations

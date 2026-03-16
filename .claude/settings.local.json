@@ -25,7 +25,11 @@
       "Bash(ls /c/Users/avand/AppData/Local/Programs/Python/*/python.exe)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/test_input_policy.py -v)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/ tests/test_metrics/ -v)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v)",
+      "Bash(xargs grep:*)",
+      "Bash(python -m pytest tests/test_gui/test_histogram_window.py tests/test_gui/test_main_window.py -v)",
+      "Bash(ls venv/Scripts/python*)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_gui/test_histogram_window.py tests/test_gui/test_main_window.py -v)"
     ]
   }
 }
