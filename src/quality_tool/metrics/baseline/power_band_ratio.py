@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from quality_tool.core.models import MetricResult
+from quality_tool.evaluation.recipe import RAW, RecipeBinding, SignalRecipe
 from quality_tool.spectral.fft import SpectralResult, compute_spectrum
 
 if TYPE_CHECKING:
@@ -44,7 +45,8 @@ class PowerBandRatio:
     """
 
     name: str = "power_band_ratio"
-    input_policy: str = "processed"
+    signal_recipe: SignalRecipe = RAW
+    recipe_binding: RecipeBinding = "active"
     needs_spectral: bool = True
 
     def __init__(

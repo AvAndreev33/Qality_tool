@@ -41,7 +41,8 @@ from PySide6.QtWidgets import (
 from quality_tool.core.models import MetricMapResult, SignalSet, ThresholdResult
 from quality_tool.envelope.analytic import AnalyticEnvelopeMethod
 from quality_tool.envelope.registry import EnvelopeRegistry
-from quality_tool.evaluation.evaluator import evaluate_metric_map
+from quality_tool.evaluation.evaluator import evaluate_metric_maps
+from quality_tool.evaluation.recipe import recipe_from_processing
 from quality_tool.evaluation.thresholding import apply_threshold
 from quality_tool.gui.dialogs.info_dialog import InfoDialog
 from quality_tool.gui.dialogs.metrics_dialog import MetricsDialog
@@ -304,14 +305,14 @@ class MainWindow(QMainWindow):
 
         new_settings = dlg.settings()
         # If processing settings changed, invalidate cached results for
-        # metrics whose input_policy is "processed".  Raw-only metrics
-        # are unaffected by preprocessing/ROI/envelope changes.
+        # metrics with active recipe binding.  Fixed-recipe metrics are
+        # unaffected by session pipeline changes.
         if new_settings != self._processing:
             names_to_drop = [
                 name for name in self._computed_results
                 if self._computed_results[name].metadata.get(
-                    "input_policy", "processed"
-                ) != "raw"
+                    "recipe_binding", "active"
+                ) != "fixed"
             ]
             for name in names_to_drop:
                 del self._computed_results[name]
@@ -349,36 +350,45 @@ class MainWindow(QMainWindow):
             self._status.showMessage("No metrics selected — use Metrics…")
             return
 
-        # Build preprocessing function list from current settings.
-        preprocess = self._build_preprocess_list()
-        segment_size = self._get_segment_size()
+        # Collect metrics that still need computation.
+        metrics_to_compute = []
+        for name in self._selected_metrics:
+            if name not in self._computed_results:
+                metrics_to_compute.append(self._registry.get(name))
+
+        if not metrics_to_compute:
+            # All selected metrics are already cached.
+            self._refresh_map_combo()
+            self._show_current_map()
+            total = len(self._computed_results)
+            self._status.showMessage(
+                f"{total} metric(s) available  (0 new, {total} reused)"
+            )
+            return
+
+        # Build active recipe from current processing settings.
+        active_recipe = recipe_from_processing(self._processing)
         envelope_method = self._get_envelope_method()
 
-        newly_computed: list[str] = []
-        for name in self._selected_metrics:
-            # Skip metrics already computed for this dataset/session.
-            if name in self._computed_results:
-                continue
+        names_to_compute = [m.name for m in metrics_to_compute]
+        self._status.showMessage(
+            f"Computing {', '.join(names_to_compute)}…"
+        )
+        self._status.repaint()
 
-            metric = self._registry.get(name)
-            self._status.showMessage(f"Computing {name}…")
-            self._status.repaint()
+        try:
+            new_results = evaluate_metric_maps(
+                self._signal_set,
+                metrics_to_compute,
+                active_recipe=active_recipe,
+                envelope_method=envelope_method,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Compute error", str(exc))
+            self._status.showMessage("Compute failed")
+            return
 
-            try:
-                result = evaluate_metric_map(
-                    self._signal_set,
-                    metric,
-                    preprocess=preprocess or None,
-                    segment_size=segment_size,
-                    envelope_method=envelope_method,
-                )
-            except Exception as exc:
-                QMessageBox.critical(self, "Compute error", str(exc))
-                self._status.showMessage(f"Compute failed: {name}")
-                return
-
-            self._computed_results[name] = result
-            newly_computed.append(name)
+        self._computed_results.update(new_results)
 
         self._refresh_map_combo()
 
@@ -392,7 +402,7 @@ class MainWindow(QMainWindow):
         self._show_current_map()
 
         total = len(self._computed_results)
-        new = len(newly_computed)
+        new = len(new_results)
         reused = total - new
         self._status.showMessage(
             f"{total} metric(s) available  ({new} new, {reused} reused)"

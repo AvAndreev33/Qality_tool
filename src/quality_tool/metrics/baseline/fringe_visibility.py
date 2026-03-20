@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from quality_tool.core.models import MetricResult
+from quality_tool.evaluation.recipe import RAW, RecipeBinding, SignalRecipe
 
 if TYPE_CHECKING:
     from quality_tool.metrics.batch_result import BatchMetricArrays
@@ -38,7 +39,8 @@ class FringeVisibility:
     # I_min).  Preprocessing steps such as baseline subtraction or
     # normalisation destroy the physical meaning of these values, so
     # this metric must always be evaluated on the raw signal.
-    input_policy: str = "raw"
+    signal_recipe: SignalRecipe = RAW
+    recipe_binding: RecipeBinding = "fixed"
 
     needs_spectral: bool = False
 

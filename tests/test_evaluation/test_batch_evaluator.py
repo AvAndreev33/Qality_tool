@@ -20,6 +20,7 @@ import pytest
 from quality_tool.core.models import MetricMapResult, MetricResult, SignalSet
 from quality_tool.envelope.analytic import AnalyticEnvelopeMethod
 from quality_tool.evaluation.evaluator import evaluate_metric_map
+from quality_tool.evaluation.recipe import RAW, SignalRecipe
 from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
@@ -40,6 +41,10 @@ def _make_signal_set(h: int = 4, w: int = 5, m: int = 64) -> SignalSet:
     return SignalSet(
         signals=signals, width=w, height=h, z_axis=z_axis, source_type="test",
     )
+
+
+# Active recipe that applies baseline subtraction.
+_BASELINE_RECIPE = SignalRecipe(baseline=True)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +79,6 @@ class TestBatchCorrectness:
     def test_fringe_visibility_values(self):
         ss = _make_signal_set(h=3, w=4, m=64)
         result = evaluate_metric_map(ss, FringeVisibility())
-        # Check against manual per-pixel computation.
         for r in range(3):
             for c in range(4):
                 sig = ss.signals[r, c, :]
@@ -85,7 +89,9 @@ class TestBatchCorrectness:
 
     def test_snr_values(self):
         ss = _make_signal_set(h=2, w=3, m=64)
-        result = evaluate_metric_map(ss, SNR(), preprocess=[subtract_baseline])
+        result = evaluate_metric_map(
+            ss, SNR(), active_recipe=_BASELINE_RECIPE,
+        )
         for r in range(2):
             for c in range(3):
                 sig = ss.signals[r, c, :] - np.mean(ss.signals[r, c, :])
@@ -101,7 +107,7 @@ class TestBatchCorrectness:
         ss = _make_signal_set(h=2, w=2, m=64)
         metric = PowerBandRatio()
         result = evaluate_metric_map(
-            ss, metric, preprocess=[subtract_baseline],
+            ss, metric, active_recipe=_BASELINE_RECIPE,
         )
         for r in range(2):
             for c in range(2):
@@ -133,13 +139,12 @@ class TestRawMetricNoFFT:
         assert np.all(result.valid_map)
 
     def test_raw_metric_ignores_preprocessing(self):
-        """Raw metric produces identical results regardless of preprocessing."""
+        """Raw metric produces identical results regardless of active recipe."""
         ss = _make_signal_set()
         result_plain = evaluate_metric_map(ss, FringeVisibility())
         result_pp = evaluate_metric_map(
             ss, FringeVisibility(),
-            preprocess=[subtract_baseline],
-            segment_size=32,
+            active_recipe=SignalRecipe(baseline=True, roi_enabled=True, segment_size=32),
         )
         np.testing.assert_array_equal(result_plain.score_map, result_pp.score_map)
 
@@ -155,10 +160,9 @@ class TestSpectralMetric:
     def test_pbr_gets_valid_results(self):
         ss = _make_signal_set()
         result = evaluate_metric_map(
-            ss, PowerBandRatio(), preprocess=[subtract_baseline],
+            ss, PowerBandRatio(), active_recipe=_BASELINE_RECIPE,
         )
         assert result.score_map.shape == (4, 5)
-        # PBR values should be in [0, 1] for valid pixels
         valid_scores = result.score_map[result.valid_map]
         assert np.all(valid_scores >= 0.0)
         assert np.all(valid_scores <= 1.0)
@@ -174,7 +178,7 @@ class TestBatchEnvelope:
         env = AnalyticEnvelopeMethod()
         result = evaluate_metric_map(
             ss, SNR(),
-            preprocess=[subtract_baseline],
+            active_recipe=_BASELINE_RECIPE,
             envelope_method=env,
         )
         assert result.score_map.shape == (2, 2)
@@ -192,13 +196,13 @@ class TestChunkedConsistency:
 
         result_big = evaluate_metric_map(
             ss, SNR(),
-            preprocess=[subtract_baseline],
-            chunk_size=1_000_000,  # single chunk
+            active_recipe=_BASELINE_RECIPE,
+            chunk_size=1_000_000,
         )
         result_small = evaluate_metric_map(
             ss, SNR(),
-            preprocess=[subtract_baseline],
-            chunk_size=3,  # many tiny chunks
+            active_recipe=_BASELINE_RECIPE,
+            chunk_size=3,
         )
 
         np.testing.assert_allclose(
@@ -219,12 +223,12 @@ class TestChunkedConsistency:
         ss = _make_signal_set(h=3, w=3, m=64)
         result_big = evaluate_metric_map(
             ss, PowerBandRatio(),
-            preprocess=[subtract_baseline],
+            active_recipe=_BASELINE_RECIPE,
             chunk_size=100_000,
         )
         result_small = evaluate_metric_map(
             ss, PowerBandRatio(),
-            preprocess=[subtract_baseline],
+            active_recipe=_BASELINE_RECIPE,
             chunk_size=4,
         )
         np.testing.assert_allclose(
@@ -239,7 +243,8 @@ class TestChunkedConsistency:
 class _NoSpectralRecordingMetric:
     """Metric that records whether spectral context was provided."""
     name = "no_spectral_recording"
-    input_policy = "processed"
+    signal_recipe = RAW
+    recipe_binding = "active"
     needs_spectral = False
 
     def __init__(self):
@@ -253,7 +258,8 @@ class _NoSpectralRecordingMetric:
 class _SpectralRecordingMetric:
     """Metric that records spectral context, needs_spectral=True."""
     name = "spectral_recording"
-    input_policy = "processed"
+    signal_recipe = RAW
+    recipe_binding = "active"
     needs_spectral = True
 
     def __init__(self):
@@ -270,7 +276,6 @@ class TestConditionalFFT:
         metric = _NoSpectralRecordingMetric()
         evaluate_metric_map(ss, metric)
         for ctx in metric.contexts:
-            # Context should be a dict but should NOT contain spectral data
             assert isinstance(ctx, dict)
             assert "spectral_result" not in ctx
 
@@ -292,11 +297,11 @@ class TestBatchROI:
     def test_roi_reduces_signal_length(self):
         ss = _make_signal_set(h=2, w=2, m=64)
         result = evaluate_metric_map(
-            ss, SNR(), segment_size=16, preprocess=[subtract_baseline],
+            ss, SNR(),
+            active_recipe=SignalRecipe(baseline=True, roi_enabled=True, segment_size=16),
         )
-        # SNR features should reflect shorter signal processing
         assert result.score_map.shape == (2, 2)
-        assert result.metadata["segment_size"] == 16
+        assert result.metadata["effective_recipe"].segment_size == 16
 
     def test_roi_batch_consistent_with_per_signal(self):
         """Batch ROI extraction should match per-signal extraction."""
@@ -322,15 +327,15 @@ class TestBatchMetadata:
         ss = _make_signal_set()
         result = evaluate_metric_map(
             ss, SNR(),
-            preprocess=[subtract_baseline],
-            segment_size=32,
+            active_recipe=SignalRecipe(baseline=True, roi_enabled=True, segment_size=32),
             envelope_method=AnalyticEnvelopeMethod(),
         )
         md = result.metadata
         assert md["metric_name"] == "snr"
-        assert md["input_policy"] == "processed"
-        assert "subtract_baseline" in md["preprocess"]
-        assert md["segment_size"] == 32
+        assert md["recipe_binding"] == "active"
+        assert md["effective_recipe"] == SignalRecipe(
+            baseline=True, roi_enabled=True, segment_size=32,
+        )
         assert md["envelope_method"] == "analytic"
         assert md["image_shape"] == (4, 5)
 
@@ -338,10 +343,8 @@ class TestBatchMetadata:
         ss = _make_signal_set()
         result = evaluate_metric_map(
             ss, FringeVisibility(),
-            preprocess=[subtract_baseline],
-            segment_size=32,
+            active_recipe=SignalRecipe(baseline=True, roi_enabled=True, segment_size=32),
         )
         md = result.metadata
-        assert md["input_policy"] == "raw"
-        assert md["preprocess"] == []
-        assert md["segment_size"] is None
+        assert md["recipe_binding"] == "fixed"
+        assert md["effective_recipe"] == RAW

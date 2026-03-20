@@ -7,6 +7,7 @@ import pytest
 
 from quality_tool.core.models import MetricMapResult, MetricResult, SignalSet
 from quality_tool.evaluation.evaluator import evaluate_metric_map
+from quality_tool.evaluation.recipe import RAW, SignalRecipe
 from quality_tool.preprocessing.basic import subtract_baseline
 from quality_tool.preprocessing.roi import extract_roi
 from quality_tool.spectral.fft import SpectralResult
@@ -33,6 +34,8 @@ def _make_signal_set(h: int = 2, w: int = 3, m: int = 32) -> SignalSet:
 class _DummyMetric:
     """Minimal metric that returns sum(signal) as score."""
     name = "dummy"
+    signal_recipe = RAW
+    recipe_binding = "active"
 
     def evaluate(self, signal, z_axis=None, envelope=None, context=None):
         return MetricResult(
@@ -48,6 +51,8 @@ class _InvalidPixelMetric:
     All others return a normal score.
     """
     name = "invalid_pixel"
+    signal_recipe = RAW
+    recipe_binding = "active"
 
     def __init__(self) -> None:
         self._call_count = 0
@@ -67,6 +72,8 @@ class _InvalidPixelMetric:
 class _VariableFeatureMetric:
     """Metric that returns different feature keys per pixel."""
     name = "variable_features"
+    signal_recipe = RAW
+    recipe_binding = "active"
 
     def __init__(self) -> None:
         self._call_count = 0
@@ -85,6 +92,8 @@ class _VariableFeatureMetric:
 class _ContextCheckMetric:
     """Metric that declares needs_spectral and asserts context contains spectral_result."""
     name = "context_check"
+    signal_recipe = RAW
+    recipe_binding = "active"
     needs_spectral = True
 
     def evaluate(self, signal, z_axis=None, envelope=None, context=None):
@@ -97,6 +106,8 @@ class _ContextCheckMetric:
 class _EnvelopeRecordingMetric:
     """Metric that records whether an envelope was received."""
     name = "envelope_recording"
+    signal_recipe = RAW
+    recipe_binding = "active"
 
     def __init__(self) -> None:
         self.received_envelopes: list[np.ndarray | None] = []
@@ -112,6 +123,10 @@ class _DummyEnvelope:
 
     def compute(self, signal, z_axis=None, context=None):
         return np.abs(signal)
+
+
+# Active recipe that applies baseline subtraction.
+_BASELINE_RECIPE = SignalRecipe(baseline=True)
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +162,6 @@ class TestBasicEvaluation:
         result = evaluate_metric_map(ss, _DummyMetric())
         md = result.metadata
         assert md["metric_name"] == "dummy"
-        assert md["preprocess"] == []
-        assert md["segment_size"] is None
         assert md["envelope_method"] is None
         assert md["image_shape"] == (2, 3)
 
@@ -162,7 +175,7 @@ class TestPreprocessing:
         ss = _make_signal_set()
         result_raw = evaluate_metric_map(ss, _DummyMetric())
         result_pre = evaluate_metric_map(
-            ss, _DummyMetric(), preprocess=[subtract_baseline]
+            ss, _DummyMetric(), active_recipe=_BASELINE_RECIPE,
         )
         # After baseline subtraction the sum should be ~0.0 for each pixel.
         assert np.allclose(result_pre.score_map, 0.0, atol=1e-10)
@@ -172,9 +185,9 @@ class TestPreprocessing:
     def test_preprocessing_in_metadata(self):
         ss = _make_signal_set()
         result = evaluate_metric_map(
-            ss, _DummyMetric(), preprocess=[subtract_baseline]
+            ss, _DummyMetric(), active_recipe=_BASELINE_RECIPE,
         )
-        assert "subtract_baseline" in result.metadata["preprocess"]
+        assert result.metadata["effective_recipe"] == _BASELINE_RECIPE
 
 
 # ---------------------------------------------------------------------------
@@ -187,14 +200,18 @@ class TestROI:
         ss = _make_signal_set(h=1, w=1, m=32)
         seg = 16
         result = evaluate_metric_map(
-            ss, _DummyMetric(), segment_size=seg
+            ss, _DummyMetric(),
+            active_recipe=SignalRecipe(roi_enabled=True, segment_size=seg),
         )
         assert result.feature_maps["length"][0, 0] == pytest.approx(seg)
 
     def test_roi_in_metadata(self):
         ss = _make_signal_set()
-        result = evaluate_metric_map(ss, _DummyMetric(), segment_size=16)
-        assert result.metadata["segment_size"] == 16
+        result = evaluate_metric_map(
+            ss, _DummyMetric(),
+            active_recipe=SignalRecipe(roi_enabled=True, segment_size=16),
+        )
+        assert result.metadata["effective_recipe"].segment_size == 16
 
 
 # ---------------------------------------------------------------------------
@@ -232,8 +249,6 @@ class TestEnvelope:
 class TestSpectralContext:
     def test_spectral_result_present(self):
         ss = _make_signal_set(h=2, w=2, m=32)
-        # _ContextCheckMetric asserts inside evaluate(); test passes
-        # only if context["spectral_result"] is always present.
         result = evaluate_metric_map(ss, _ContextCheckMetric())
         assert np.all(result.valid_map)
 
@@ -246,10 +261,8 @@ class TestInvalidPixels:
     def test_invalid_pixel_nan_and_flag(self):
         ss = _make_signal_set(h=2, w=3, m=32)
         result = evaluate_metric_map(ss, _InvalidPixelMetric())
-        # Pixel (0, 0) should be invalid.
         assert result.valid_map[0, 0] is np.bool_(False)
         assert np.isnan(result.score_map[0, 0])
-        # Other pixels should be valid.
         assert np.all(result.valid_map.ravel()[1:])
         assert not np.any(np.isnan(result.score_map.ravel()[1:]))
 
@@ -273,9 +286,7 @@ class TestFeatureMaps:
         ss = _make_signal_set(h=1, w=2, m=32)
         result = evaluate_metric_map(ss, _VariableFeatureMetric())
         fm = result.feature_maps
-        # Pixel 0 (even) has "even_only" but not "odd_only"
         assert not np.isnan(fm["even_only"][0, 0])
         assert np.isnan(fm["odd_only"][0, 0])
-        # Pixel 1 (odd) has "odd_only" but not "even_only"
         assert np.isnan(fm["even_only"][0, 1])
         assert not np.isnan(fm["odd_only"][0, 1])

@@ -2,248 +2,311 @@
 
 ## Iteration name
 
-Profiling and performance analysis — bottlenecks before CUDA
+Signal recipe planning — unified metric input preparation and reuse
 
 ## Goal
 
-Profile the current backend and GUI-driven compute workflow on real data in order to identify the true bottlenecks before introducing a CUDA backend.
+Replace the current simplistic metric input selection approach with a more explicit and reusable signal-preparation model.
 
-This iteration should:
-- measure where time is spent during real workflow execution
-- identify the slowest stages in the current pipeline
-- identify unnecessary recomputation, copies, and memory-heavy paths
-- produce a short actionable performance report
-- implement only small safe fixes if they are trivial and clearly beneficial
+This iteration should introduce a **signal recipe** concept and a lightweight **planner** that determines:
+- which signal variants must be prepared for the selected metrics,
+- which derived representations must be computed on top of those prepared signals,
+- how those prepared results are reused across multiple metrics in one evaluation run.
 
-The main goal is understanding and planning, not large optimization yet.
+The goal is to make metric execution semantically correct, reusable, and ready for future metric growth and later CUDA acceleration.
 
 ---
 
 ## Why this iteration matters
 
-The project now has:
-- real-data loaders
-- preprocessing / ROI / envelope / spectral support
-- metrics
-- evaluator
-- thresholding
-- usable GUI
-- histogram-based analysis
+The project now supports:
+- multiple metrics in one run,
+- preprocessing,
+- ROI extraction,
+- envelope computation,
+- spectral computation,
+- result reuse,
+- GUI-driven experimentation.
 
-The system already works, but compute time is high on real WLI data.
+The current `raw` / `processed` distinction is no longer expressive enough.
 
-Before building a CUDA backend, we need to know:
-- which parts are truly the bottleneck
-- what should be accelerated first
-- what can be improved on CPU immediately
-- what architectural changes would help CUDA integration later
+Different metrics may require:
+- the raw signal,
+- a specific prepared signal recipe,
+- the currently active GUI/experiment recipe,
+- derived representations such as envelope or spectrum built on top of that prepared signal.
 
-This iteration creates that foundation.
+If this is not made explicit now, future metric growth will lead to:
+- duplicated preprocessing,
+- duplicated envelope/FFT computation,
+- incorrect semantics,
+- fragile GUI/backend coupling,
+- difficult CUDA integration later.
+
+---
+
+## Core design direction
+
+The architecture should move to the following model:
+
+### 1. Signal recipe
+A metric should declare which **signal recipe** it uses.
+
+Examples:
+- `raw`
+- `roi_only`
+- `roi_detrended`
+- `active_pipeline`
+
+The important point is:
+- `raw` is also a recipe,
+- not a special case outside the recipe system.
+
+### 2. Recipe binding
+A metric should also declare whether its recipe is:
+- **fixed** — metric always uses the same declared recipe
+- **active** — metric uses the current active processing pipeline selected in the GUI / session
+
+This preserves both:
+- strict physically constrained metrics,
+- flexible exploratory metrics.
+
+### 3. Derived representations
+Envelope and spectrum must be treated as representations derived from a specific prepared signal recipe.
+
+That means:
+- envelope for `raw` and envelope for `roi_detrended` are different objects
+- spectrum for `raw` and spectrum for `roi_detrended` are different objects
+
+### 4. Planner
+Before evaluation, a planner should:
+- collect the selected metrics,
+- determine which unique recipes are needed,
+- determine which derived representations are needed per recipe,
+- prepare them once,
+- make them reusable during evaluation.
 
 ---
 
 ## In scope
 
-### Real-data profiling
+### Signal recipe model
 
-Profile the current pipeline on real data from `testing_data`.
+Introduce a minimal, explicit signal-recipe abstraction.
 
-Use realistic workflows, for example:
-- load real txt dataset
-- load real image stack dataset if appropriate
-- compute one metric
-- compute multiple metrics
-- compute with and without preprocessing
-- compute with and without envelope where relevant
-- apply thresholding
-- update GUI-driven compute path if practical to measure cleanly
+Requirements:
+- represent raw signal as a recipe
+- represent processed signal variants as recipes
+- make recipes comparable / reusable
+- make recipes suitable for caching/reuse logic
 
-The main focus is compute path profiling, not GUI rendering speed.
+Keep the design minimal and codebase-friendly.
+Do not build a large generic pipeline framework.
 
----
-
-### Stage-level timing breakdown
-
-Measure the runtime contribution of the main stages.
-
-At minimum, try to separate timings for:
-- loading
-- metadata parsing
-- z-axis handling
-- preprocessing
-- ROI extraction
-- envelope computation
-- spectral / FFT computation
-- metric evaluation
-- thresholding
-- GUI-triggered orchestration overhead if relevant
-
-The result should make it clear which stages dominate total runtime.
+The recipe model should be strong enough for:
+- fixed metric recipes
+- active GUI/session recipe
+- reuse of prepared signals
 
 ---
 
-### Metric-level profiling
+### Recipe binding model
 
-Profile current metrics individually on realistic data.
+Introduce a minimal way for metrics to declare how they obtain their signal recipe.
 
-At minimum, include:
-- `fringe_visibility`
-- `snr`
-- `power_band_ratio`
+At minimum, support:
+- `fixed`
+- `active`
 
-Check:
-- which metrics are cheap
-- which metrics are expensive
-- whether mixed raw/processed policies affect cost
-- whether spectral metrics cause repeated FFT overhead
+Meaning:
+- `fixed` = metric always uses its declared recipe
+- `active` = metric uses the current active processing pipeline from session/evaluator context
 
----
-
-### Reuse / recomputation analysis
-
-Inspect whether the current implementation performs unnecessary repeated work.
-
-Examples to check:
-- repeated preprocessing of the same signals
-- repeated envelope computation
-- repeated FFT computation
-- repeated per-pixel conversions or allocations
-- repeated recomputation of already available metric results
-- repeated map rebuilds on GUI-side operations
-
-The goal is to identify obvious CPU-side inefficiencies before CUDA.
+This should replace the need for ad hoc `raw` / `processed` special-casing.
 
 ---
 
-### Memory and data-layout analysis
+### Metric metadata refinement
 
-Inspect important memory-related behavior.
+Update metric-side declarations so that a metric can declare:
+- its `signal_recipe`
+- its `recipe_binding`
+- whether it needs envelope
+- whether it needs spectral data
 
-Examples to check:
-- unnecessary `float64` use
-- unnecessary array copies
-- shape/layout transformations that may be expensive
-- whether current `(H, W, M)` usage is causing overhead in hot loops
-- whether temporary arrays are large and repeated
+Keep this close to metric definitions / metadata.
+Do not move this logic into the GUI.
 
-This does not require a complete redesign.
-It is a diagnostic pass.
-
----
-
-### Small safe performance fixes
-
-Small safe improvements are allowed only if they are:
-- local
-- low risk
-- clearly beneficial
-- do not redesign architecture
-
-Examples:
-- removing obvious repeated computations
-- avoiding unnecessary copies
-- simple dtype cleanup where safe
-- caching a derived representation inside one evaluation pass if already semantically correct
-
-Do not implement major optimization or CUDA in this iteration.
+For this iteration, migrate current metrics to this new scheme.
 
 ---
 
-### Performance report
+### Planner introduction
 
-Produce a short written report in the repository.
+Add a lightweight planning layer before batch evaluation.
 
-Recommended file:
-- `docs/performance_notes.md`
+Responsibilities:
+- inspect selected metrics
+- resolve effective recipes
+- group metrics by recipe
+- determine whether envelope is needed per recipe
+- determine whether spectral data is needed per recipe
+- produce a plan that evaluator can execute efficiently
 
-The report should summarize:
-- what was profiled
-- which stages dominate runtime
-- which metrics dominate runtime
-- what obvious inefficiencies were found
-- what should be optimized first on CPU
-- what should be first candidates for CUDA backend implementation
+This planner should remain simple and explicit.
 
-Keep it practical and engineering-oriented.
+It does not need to be a large framework.
+A small helper/module is enough.
+
+---
+
+### Evaluator refactor
+
+Update the evaluator so that it no longer thinks in terms of only `raw` vs `processed`.
+
+Instead, it should:
+- receive or construct the execution plan
+- prepare each required recipe once per chunk
+- compute derived representations once per recipe when needed
+- dispatch metrics onto the correct prepared signal bundle
+
+Requirements:
+- preserve current metric semantics
+- preserve batch evaluation where available
+- preserve correctness of thresholding and result assembly
+- keep code readable
+
+---
+
+### Reuse / cache semantics refinement
+
+Update reuse logic so that results are keyed by semantically correct execution inputs.
+
+At minimum, reuse must now depend on:
+- dataset identity
+- metric identity
+- effective signal recipe
+- derived representation requirements where relevant
+
+Important behavior:
+- metrics with fixed raw recipe should remain reusable across GUI preprocessing changes
+- metrics with active recipe should depend on the active processing pipeline configuration
+
+Keep this simple and correct.
+Do not build a heavyweight cache system.
+
+---
+
+### GUI integration
+
+The GUI must remain thin.
+
+Requirements:
+- GUI should continue selecting active processing pipeline as it does now
+- GUI should not decide metric recipe semantics itself
+- current multi-metric compute flow should continue to work
+- current session-state model should remain compatible
+- if needed, GUI may pass active processing settings into the evaluator/planner, but not interpret them semantically
+
+No major GUI redesign is needed in this iteration.
+
+---
+
+### Documentation and clarity
+
+Document the new semantics clearly in code.
+
+It should be easy to understand:
+- what a signal recipe is
+- what fixed vs active binding means
+- how derived representations depend on recipe
+- how reuse works under the new model
+
+This is important because future metric batches will rely on this structure.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
+- a broad experiment-manifest system
+- a user-facing pipeline builder
+- new GUI workflows
 - CUDA backend
-- large vectorization rewrite
-- major evaluator redesign
-- new metrics
-- GUI redesign
-- benchmark framework
+- major performance optimization beyond what naturally falls out of recipe reuse
+- new metrics unrelated to validating the new architecture
 - synthetic workflows
-- broad caching framework
-- large architecture changes
 
-This iteration is for profiling and bottleneck discovery.
+Keep this iteration architectural and focused.
 
 ---
 
 ## File targets
 
-Expected modules/files to update only if needed:
+Expected modules to update:
 
-- backend modules that require small safe local fixes
-- optional profiling helper scripts if useful
-- `docs/performance_notes.md`
+- `src/quality_tool/metrics/base.py`
+- baseline metric modules as needed
+- `src/quality_tool/evaluation/evaluator.py`
 
-Optional new file if helpful:
-- `scripts/profile_pipeline.py`
+Likely new module(s):
+- a small planning/recipe module under `evaluation/` or another appropriate backend location
 
-Keep additions minimal.
+Possible GUI/session update only if needed:
+- `src/quality_tool/gui/main_window.py`
+
+Add only what is necessary.
+Keep structure minimal.
 
 ---
 
 ## Testing expectations
 
-If any code is changed:
-- keep changes safe and covered where practical
-- do not weaken existing tests
-- ensure the full test suite still passes
+Add targeted tests for:
+- recipe equality / reuse behavior
+- fixed recipe vs active recipe behavior
+- mixed metric runs using different recipes
+- envelope/spectral reuse per recipe
+- evaluator correctness under multiple recipe groups
+- GUI/session recompute semantics where practical
+- no regression of current behavior
 
-If profiling helpers/scripts are added:
-- they do not need heavy automated testing
-- they should be simple and reproducible
+Tests should focus on semantics and reuse, not on GUI cosmetics.
 
 ---
 
 ## Implementation preferences
 
-- prefer measurement over guessing
-- prefer simple instrumentation over heavy tooling if enough
-- keep profiling code separate from production code where practical
-- keep performance notes concrete
-- distinguish clearly between:
-  - current bottlenecks
-  - safe immediate improvements
-  - later CUDA candidates
+- keep the model minimal and explicit
+- treat `raw` as a recipe, not a separate special case
+- keep recipe semantics backend-side
+- keep metric declarations close to metric definitions
+- keep planner lightweight
+- keep evaluator readable
+- prefer correctness and reuse clarity over abstract generality
+- avoid introducing a large framework
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- realistic profiling has been performed on current real workflows
-- major bottlenecks are identified
-- obvious recomputation/copy issues are documented
-- any small safe fixes are implemented if clearly justified
-- a concise performance report exists
-- the project has a clear next-step basis for CPU cleanup and CUDA design
+- metrics declare signal recipes instead of relying on the old raw/processed split
+- fixed vs active recipe binding exists
+- evaluator executes through a lightweight recipe plan
+- prepared signals are reused per recipe
+- envelope/spectral representations are reused per recipe
+- current multi-metric workflow still works
+- reuse semantics become more correct and explicit
+- the system is better prepared for future metric expansion and later CUDA backend work
 
 ---
 
 ## Expected assistant workflow
 
 1. read `CLAUDE.md` and the docs
-2. inspect the current backend and relevant GUI compute path
-3. propose a short profiling plan
-4. run profiling / instrumentation
-5. implement only small safe fixes if clearly justified
-6. write `docs/performance_notes.md`
-7. summarize findings, changes, and recommended next optimization steps
+2. summarize the intended signal-recipe refinement
+3. propose a short implementation plan
+4. implement only this iteration
+5. add targeted tests
+6. summarize created files, modified files, and any limitations

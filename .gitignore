@@ -501,3 +501,7 @@ src/quality_tool/gui/windows/__pycache__/histogram_window.cpython-314.pyc
 src/quality_tool/preprocessing/__pycache__/batch.cpython-314.pyc
 tests/test_evaluation/__pycache__/test_batch_evaluator.cpython-314-pytest-9.0.2.pyc
 src/quality_tool/metrics/__pycache__/batch_result.cpython-314.pyc
+tests/test_evaluation/__pycache__/test_planner.cpython-314-pytest-9.0.2.pyc
+tests/test_evaluation/__pycache__/test_recipe.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/evaluation/__pycache__/planner.cpython-314.pyc
+src/quality_tool/evaluation/__pycache__/recipe.cpython-314.pyc

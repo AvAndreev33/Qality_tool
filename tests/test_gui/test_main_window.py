@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from quality_tool.core.models import MetricMapResult, SignalSet
-from quality_tool.evaluation.evaluator import evaluate_metric_map
+from quality_tool.evaluation.evaluator import evaluate_metric_maps
 from quality_tool.evaluation.thresholding import apply_threshold
 from quality_tool.gui.dialogs.info_dialog import InfoDialog
 from quality_tool.gui.main_window import MainWindow
@@ -239,24 +239,22 @@ class TestMainWindow:
         # Select snr (cached) + fringe_visibility (new).
         window._selected_metrics = ["snr", "fringe_visibility"]
 
-        # Track calls to evaluate_metric_map.
-        calls: list[str] = []
-        original_evaluate = evaluate_metric_map
+        # Track calls to evaluate_metric_maps.
+        calls: list[list[str]] = []
 
-        def tracking_evaluate(signal_set, metric, **kw):
-            calls.append(metric.name)
-            return _make_metric_map(metric.name)
+        def tracking_evaluate(signal_set, metrics, **kw):
+            names = [m.name for m in metrics]
+            calls.append(names)
+            return {m.name: _make_metric_map(m.name) for m in metrics}
 
-        from quality_tool.evaluation import evaluator
-        monkeypatch.setattr(evaluator, "evaluate_metric_map", tracking_evaluate)
-        # Also patch the name used inside main_window module.
         import quality_tool.gui.main_window as mw_mod
-        monkeypatch.setattr(mw_mod, "evaluate_metric_map", tracking_evaluate)
+        monkeypatch.setattr(mw_mod, "evaluate_metric_maps", tracking_evaluate)
 
         window._on_compute()
 
         # Only fringe_visibility should have been computed.
-        assert calls == ["fringe_visibility"]
+        assert len(calls) == 1
+        assert calls[0] == ["fringe_visibility"]
         # Both should be in results.
         assert "snr" in window._computed_results
         assert "fringe_visibility" in window._computed_results
@@ -277,8 +275,8 @@ class TestMainWindow:
 
         import quality_tool.gui.main_window as mw_mod
         monkeypatch.setattr(
-            mw_mod, "evaluate_metric_map",
-            lambda *a, **k: _make_metric_map("snr"),
+            mw_mod, "evaluate_metric_maps",
+            lambda ss, metrics, **k: {m.name: _make_metric_map(m.name) for m in metrics},
         )
 
         window._on_compute()

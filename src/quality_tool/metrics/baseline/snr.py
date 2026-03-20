@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from quality_tool.core.models import MetricResult
+from quality_tool.evaluation.recipe import RAW, RecipeBinding, SignalRecipe
 
 if TYPE_CHECKING:
     from quality_tool.metrics.batch_result import BatchMetricArrays
@@ -35,7 +36,8 @@ class SNR:
     """
 
     name: str = "snr"
-    input_policy: str = "processed"
+    signal_recipe: SignalRecipe = RAW
+    recipe_binding: RecipeBinding = "active"
     needs_spectral: bool = False
 
     def evaluate(

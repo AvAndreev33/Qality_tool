@@ -2,6 +2,18 @@
 
 Defines the protocol that every quality metric must satisfy.
 
+Signal recipe
+-------------
+Each metric declares a ``signal_recipe`` (which preparation steps it
+needs) and a ``recipe_binding`` that controls how the effective recipe
+is determined:
+
+* ``"fixed"``  — the metric always uses its declared recipe.
+* ``"active"`` — the metric uses the current session/GUI pipeline.
+
+``raw`` is a recipe (the identity recipe), not a special case outside
+the recipe system.
+
 Batch evaluation
 ----------------
 Metrics may optionally implement ``evaluate_batch`` for vectorised
@@ -24,30 +36,33 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 
 from quality_tool.core.models import MetricResult
+from quality_tool.evaluation.recipe import RecipeBinding, SignalRecipe
 
 
 @runtime_checkable
 class BaseMetric(Protocol):
     """Protocol for quality metric implementations.
 
-    Every metric must expose ``name``, ``input_policy``, and ``evaluate``.
+    Every metric must expose ``name``, ``signal_recipe``,
+    ``recipe_binding``, and ``evaluate``.
     Optional extensions: ``needs_spectral``, ``evaluate_batch``.
     """
 
     name: str
 
-    input_policy: str
-    """Which signal representation this metric must receive.
+    signal_recipe: SignalRecipe
+    """Which signal preparation this metric requires.
 
-    Supported values:
+    For ``recipe_binding="fixed"`` this is the exact recipe used.
+    For ``recipe_binding="active"`` this is ignored in favour of the
+    active session pipeline (but may serve as a documentation hint).
+    """
 
-    * ``"raw"`` — the metric must be evaluated on the original raw
-      signal, ignoring any preprocessing or ROI extraction settings.
-    * ``"processed"`` — the metric uses the signal after the currently
-      configured preprocessing chain and optional ROI extraction.
+    recipe_binding: RecipeBinding
+    """How the effective recipe is determined.
 
-    The evaluator reads this attribute to select the correct effective
-    signal for each metric during multi-metric computation.
+    * ``"fixed"``  — always use the metric's declared ``signal_recipe``.
+    * ``"active"`` — use the current active processing pipeline.
     """
 
     def evaluate(
