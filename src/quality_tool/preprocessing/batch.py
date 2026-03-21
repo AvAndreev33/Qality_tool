@@ -79,6 +79,34 @@ def smooth_batch(signals: np.ndarray, window_size: int = 5) -> np.ndarray:
     return out
 
 
+def detrend_linear_batch(signals: np.ndarray) -> np.ndarray:
+    """Remove a least-squares linear trend from each signal.
+
+    Parameters
+    ----------
+    signals : np.ndarray
+        2-D array of shape ``(N, M)``.
+
+    Returns
+    -------
+    np.ndarray
+        Detrended signals, same shape.
+    """
+    n, m = signals.shape
+    x = np.arange(m, dtype=float)
+    x_mean = (m - 1) / 2.0
+    x_centered = x - x_mean
+    ss_x = np.sum(x_centered ** 2)
+
+    if ss_x == 0:
+        return signals - np.mean(signals, axis=1, keepdims=True)
+
+    y_mean = np.mean(signals, axis=1, keepdims=True)  # (N, 1)
+    slope = (signals @ x_centered) / ss_x              # (N,)
+    trend = slope[:, np.newaxis] * x_centered[np.newaxis, :]  # (N, M)
+    return signals - y_mean - trend
+
+
 def extract_roi_batch(
     signals: np.ndarray,
     segment_size: int,

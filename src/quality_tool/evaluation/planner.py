@@ -2,7 +2,7 @@
 
 Before batch evaluation the planner inspects selected metrics, resolves
 their effective recipes, groups metrics that share the same prepared
-signal, and notes which derived representations (envelope, spectral)
+signal, and determines which derived representations (envelope, spectral)
 are needed per group.
 
 This avoids duplicated signal preparation and derived-representation
@@ -18,7 +18,12 @@ from quality_tool.evaluation.recipe import (
     SignalRecipe,
     resolve_effective_recipe,
 )
-from quality_tool.metrics.base import BaseMetric
+from quality_tool.metrics.base import (
+    BaseMetric,
+    RepresentationNeeds,
+    NO_EXTRA,
+    resolve_representation_needs,
+)
 
 
 @dataclass
@@ -31,14 +36,20 @@ class RecipeGroup:
         The concrete recipe for signal preparation.
     metrics : list[BaseMetric]
         Metrics in this group, in original selection order.
+    needs : RepresentationNeeds
+        Merged representation needs for the group.
     needs_envelope : bool
         Whether any metric in this group requires envelope computation.
+        Derived from ``needs.envelope`` plus session-level envelope
+        availability.
     needs_spectral : bool
         Whether any metric in this group requires spectral computation.
+        Derived from ``needs.needs_spectral``.
     """
 
     recipe: SignalRecipe
     metrics: list[BaseMetric] = field(default_factory=list)
+    needs: RepresentationNeeds = field(default_factory=lambda: NO_EXTRA)
     needs_envelope: bool = False
     needs_spectral: bool = False
 
@@ -80,7 +91,8 @@ def build_plan(
     Returns
     -------
     EvaluationPlan
-        Groups of metrics keyed by their effective recipe.
+        Groups of metrics keyed by their effective recipe, with merged
+        representation needs per group.
     """
     # Ordered dict preserving first-seen order of recipes.
     groups_by_recipe: dict[SignalRecipe, RecipeGroup] = {}
@@ -98,19 +110,21 @@ def build_plan(
         group = groups_by_recipe[recipe]
         group.metrics.append(metric)
 
-        # Aggregate derived-representation needs.
-        if getattr(metric, "needs_spectral", False):
-            group.needs_spectral = True
-        # Envelope need: only if an envelope method is actually available.
-        # Individual metrics do not currently declare needs_envelope,
-        # so envelope is provided to all metrics in a group when the
-        # session has an envelope method enabled.
+        # Merge structured representation needs.
+        metric_needs = resolve_representation_needs(metric)
+        group.needs = group.needs.merge(metric_needs)
 
-    # When an envelope method is available, mark all groups as needing
-    # it (current behaviour: envelope is passed to all metrics if
-    # configured).
-    if has_envelope:
-        for group in groups_by_recipe.values():
+    # Derive convenience flags from merged needs.
+    for group in groups_by_recipe.values():
+        group.needs_spectral = group.needs.needs_spectral
+
+        # Envelope: mark the group if *any* metric declares envelope need
+        # (regardless of session availability — the evaluator provides a
+        # fallback), or if the session has an envelope method enabled
+        # (legacy: envelope is passed to all groups when configured).
+        if group.needs.envelope:
+            group.needs_envelope = True
+        elif has_envelope:
             group.needs_envelope = True
 
     return EvaluationPlan(groups=list(groups_by_recipe.values()))

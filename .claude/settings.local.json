@@ -49,7 +49,12 @@
       "Bash(git remote:*)",
       "Bash(git push:*)",
       "Bash(python -m pytest tests/test_evaluation/ tests/test_metrics/ -x --tb=short)",
-      "Bash(py -m pytest tests/test_evaluation/ tests/test_metrics/ -x --tb=short)"
+      "Bash(py -m pytest tests/test_evaluation/ tests/test_metrics/ -x --tb=short)",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(py -m pytest tests/ -x -q)",
+      "Bash(python -m pytest tests/test_metrics/test_noise_metrics.py -v)",
+      "Bash(py -m pytest tests/test_metrics/test_noise_metrics.py -v)",
+      "Bash(py -m pytest tests/ -v)"
     ]
   }
 }

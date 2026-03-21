@@ -34,6 +34,8 @@ class FringeVisibility:
     """
 
     name: str = "fringe_visibility"
+    category: str = "baseline"
+    display_name: str = "Fringe Visibility"
 
     # Michelson visibility relies on absolute intensity values (I_max,
     # I_min).  Preprocessing steps such as baseline subtraction or

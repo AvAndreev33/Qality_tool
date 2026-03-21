@@ -12,6 +12,14 @@ recipe group, and dispatches metrics onto the correct prepared bundle.
 
 ``raw`` is a recipe (the identity recipe), not a special case.
 
+Representation bundles
+----------------------
+For each recipe group and each chunk the evaluator builds a
+:class:`RepresentationBundle` containing the prepared signal and any
+derived representations (envelope, spectral data) required by the
+group's metrics.  Each representation is computed at most once per
+recipe per chunk.
+
 Batch / chunked evaluation
 --------------------------
 The evaluator operates in **chunked batch mode**: it reshapes the
@@ -23,13 +31,6 @@ Metrics that implement ``evaluate_batch(signals, z_axis, envelopes,
 context) -> BatchMetricArrays`` are evaluated in vectorised mode.
 Metrics without ``evaluate_batch`` fall back to a per-signal loop
 within each chunk.
-
-Conditional FFT
----------------
-The evaluator inspects ``metric.needs_spectral``.  When ``False``
-(the default), no FFT is computed.  When ``True``, a batch FFT is
-performed once per chunk per recipe group and passed to the metric
-via ``context``.
 
 Invalid-score convention
 ------------------------
@@ -45,17 +46,21 @@ from typing import Callable, Sequence
 
 import numpy as np
 
+from quality_tool.core.analysis_context import AnalysisContext, default_analysis_context
 from quality_tool.core.models import MetricMapResult, MetricResult, SignalSet
+from quality_tool.envelope.analytic import AnalyticEnvelopeMethod
 from quality_tool.envelope.base import BaseEnvelopeMethod
+from quality_tool.evaluation.bundle import RepresentationBundle
 from quality_tool.evaluation.planner import EvaluationPlan, RecipeGroup, build_plan
 from quality_tool.evaluation.recipe import (
     RAW,
     SignalRecipe,
     resolve_effective_recipe,
 )
-from quality_tool.metrics.base import BaseMetric
+from quality_tool.metrics.base import BaseMetric, resolve_representation_needs
 from quality_tool.metrics.batch_result import BatchMetricArrays
 from quality_tool.preprocessing.batch import (
+    detrend_linear_batch,
     extract_roi_batch,
     normalize_amplitude_batch,
     smooth_batch,
@@ -67,7 +72,10 @@ from quality_tool.preprocessing.basic import (
     subtract_baseline,
 )
 from quality_tool.preprocessing.roi import extract_roi
-from quality_tool.spectral.fft import compute_spectrum
+from quality_tool.spectral.fft import (
+    SpectralResult,
+    compute_spectrum_batch,
+)
 
 # Default chunk size — balances vectorisation benefit against memory.
 _DEFAULT_CHUNK = 50_000
@@ -83,6 +91,7 @@ def evaluate_metric_map(
     *,
     active_recipe: SignalRecipe | None = None,
     envelope_method: BaseEnvelopeMethod | None = None,
+    analysis_context: AnalysisContext | None = None,
     chunk_size: int = _DEFAULT_CHUNK,
 ) -> MetricMapResult:
     """Evaluate *metric* on every pixel signal in *signal_set*.
@@ -103,6 +112,8 @@ def evaluate_metric_map(
     envelope_method : BaseEnvelopeMethod | None
         If given, the envelope is computed on the recipe-prepared signal
         and passed to the metric.
+    analysis_context : AnalysisContext | None
+        Shared constants and heuristics.  Uses defaults if ``None``.
     chunk_size : int
         Number of signals per batch chunk.
 
@@ -115,6 +126,7 @@ def evaluate_metric_map(
         [metric],
         active_recipe=active_recipe,
         envelope_method=envelope_method,
+        analysis_context=analysis_context,
         chunk_size=chunk_size,
     )
     return results[metric.name]
@@ -126,6 +138,7 @@ def evaluate_metric_maps(
     *,
     active_recipe: SignalRecipe | None = None,
     envelope_method: BaseEnvelopeMethod | None = None,
+    analysis_context: AnalysisContext | None = None,
     chunk_size: int = _DEFAULT_CHUNK,
 ) -> dict[str, MetricMapResult]:
     """Evaluate multiple metrics on every pixel signal in *signal_set*.
@@ -144,6 +157,8 @@ def evaluate_metric_maps(
         The current session processing pipeline.
     envelope_method : BaseEnvelopeMethod | None
         If given, the envelope is computed per recipe group.
+    analysis_context : AnalysisContext | None
+        Shared constants and heuristics.  Uses defaults if ``None``.
     chunk_size : int
         Number of signals per batch chunk.
 
@@ -152,6 +167,9 @@ def evaluate_metric_maps(
     dict[str, MetricMapResult]
         Mapping from metric name to result.
     """
+    if analysis_context is None:
+        analysis_context = default_analysis_context()
+
     plan = build_plan(
         metrics,
         active_recipe=active_recipe,
@@ -167,7 +185,21 @@ def evaluate_metric_maps(
 
     results: dict[str, MetricMapResult] = {}
 
+    # Fallback envelope method: when a group's metrics declare that
+    # they need envelope but no envelope method was provided by the
+    # session, use the default analytic envelope.
+    _fallback_envelope: BaseEnvelopeMethod | None = None
+
     for group in plan.groups:
+        if group.needs_envelope:
+            group_envelope = envelope_method
+            if group_envelope is None:
+                if _fallback_envelope is None:
+                    _fallback_envelope = AnalyticEnvelopeMethod()
+                group_envelope = _fallback_envelope
+        else:
+            group_envelope = None
+
         group_results = _evaluate_recipe_group(
             group,
             signals_2d=signals_2d,
@@ -175,7 +207,8 @@ def evaluate_metric_maps(
             h=h,
             w=w,
             n_total=n_total,
-            envelope_method=envelope_method if group.needs_envelope else None,
+            envelope_method=group_envelope,
+            analysis_context=analysis_context,
             chunk_size=chunk_size,
             active_recipe=active_recipe,
         )
@@ -197,6 +230,7 @@ def _evaluate_recipe_group(
     w: int,
     n_total: int,
     envelope_method: BaseEnvelopeMethod | None,
+    analysis_context: AnalysisContext,
     chunk_size: int,
     active_recipe: SignalRecipe | None,
 ) -> dict[str, MetricMapResult]:
@@ -211,7 +245,20 @@ def _evaluate_recipe_group(
 
     # Build batch preprocessing chain for this recipe.
     batch_preprocess = _recipe_to_batch_preprocess(recipe) if not is_raw else None
-    segment_size = recipe.segment_size if recipe.roi_enabled else None
+
+    # Determine ROI segment size.  Fixed recipes with roi_enabled=True
+    # but no explicit segment_size inherit it from the active recipe,
+    # then fall back to the analysis context default.
+    segment_size: int | None = None
+    if recipe.roi_enabled:
+        segment_size = recipe.segment_size
+        if segment_size is None and active_recipe is not None:
+            segment_size = active_recipe.segment_size
+        if segment_size is None:
+            segment_size = analysis_context.default_segment_size
+
+    # Merged representation needs for this group.
+    group_needs = group.needs
 
     # Per-metric accumulators.
     metric_accum: dict[str, _MetricAccum] = {
@@ -238,77 +285,43 @@ def _evaluate_recipe_group(
                 chunk_signals = extract_roi_batch(chunk_signals, segment_size)
                 chunk_z = None  # z_axis no longer matches
 
-        # --- 2) Spectral context (once per recipe group if needed) ---
-        context: dict = {}
-        if group.needs_spectral:
-            chunk_m = chunk_signals.shape[1]
-            if chunk_z is not None and len(chunk_z) >= 2:
-                spacing = float(np.mean(np.diff(chunk_z)))
-                if spacing <= 0:
-                    spacing = 1.0
-            else:
-                spacing = 1.0
-            fft_coeffs = np.fft.rfft(chunk_signals, axis=1)
-            frequencies = np.fft.rfftfreq(chunk_m, d=spacing)
-            amplitude = np.abs(fft_coeffs)
-            context["batch_frequencies"] = frequencies
-            context["batch_amplitude"] = amplitude
+        # --- 2) Build representation bundle for this chunk ---
+        bundle = _build_bundle(
+            chunk_signals=chunk_signals,
+            chunk_z=chunk_z,
+            recipe=recipe,
+            group_needs=group_needs,
+            envelope_method=envelope_method,
+            has_envelope_batch=has_envelope_batch,
+            chunk_n=chunk_n,
+            analysis_context=analysis_context,
+        )
 
-        # --- 3) Envelope (once per recipe group if needed) ---
-        chunk_envelopes: np.ndarray | None = None
-        if envelope_method is not None:
-            if has_envelope_batch:
-                chunk_envelopes = envelope_method.compute_batch(
-                    chunk_signals, chunk_z, context,
-                )
-            else:
-                chunk_envelopes = np.empty_like(chunk_signals)
-                for i in range(chunk_n):
-                    chunk_envelopes[i] = envelope_method.compute(
-                        chunk_signals[i], chunk_z, context,
-                    )
+        # Context dict from the bundle (backward-compatible).
+        context = bundle.to_context_dict()
 
-        # --- 4) Evaluate each metric in this group ---
+        # --- 3) Evaluate each metric in this group ---
         for metric in group.metrics:
             accum = metric_accum[metric.name]
-            needs_spectral = getattr(metric, "needs_spectral", False)
             has_batch = hasattr(metric, "evaluate_batch")
 
             if has_batch:
                 batch_result = metric.evaluate_batch(
-                    chunk_signals, chunk_z, chunk_envelopes, context,
+                    chunk_signals, chunk_z, bundle.envelope, context,
                 )
                 accum.score_flat[start:end] = batch_result.scores
                 accum.valid_flat[start:end] = batch_result.valid
                 accum.feature_chunks.append(batch_result.features)
             else:
-                chunk_features: dict[str, list[float]] = {}
-                for i in range(chunk_n):
-                    sig = chunk_signals[i]
-                    env = chunk_envelopes[i] if chunk_envelopes is not None else None
-                    sig_ctx: dict = {}
-                    if needs_spectral:
-                        from quality_tool.spectral.fft import SpectralResult
-                        sig_ctx["spectral_result"] = SpectralResult(
-                            frequencies=context["batch_frequencies"],
-                            amplitude=context["batch_amplitude"][i],
-                        )
-                    result = metric.evaluate(sig, chunk_z, env, sig_ctx)
-                    accum.score_flat[start + i] = (
-                        result.score if result.valid else np.nan
-                    )
-                    accum.valid_flat[start + i] = result.valid
-                    for k, v in result.features.items():
-                        if k not in chunk_features:
-                            chunk_features[k] = [np.nan] * i
-                        chunk_features[k].append(
-                            float(v) if result.valid else np.nan
-                        )
-                    for k in chunk_features:
-                        if k not in result.features:
-                            chunk_features[k].append(np.nan)
-                accum.feature_chunks.append(
-                    {k: np.array(v) for k, v in chunk_features.items()}
+                _evaluate_per_signal(
+                    metric=metric,
+                    chunk_signals=chunk_signals,
+                    chunk_z=chunk_z,
+                    bundle=bundle,
+                    context=context,
+                    accum=accum,
+                    start=start,
+                    chunk_n=chunk_n,
                 )
 
             accum.chunk_ranges.append((start, end))
@@ -348,6 +361,127 @@ def _evaluate_recipe_group(
 
 
 # ------------------------------------------------------------------
+# Internal: bundle construction
+# ------------------------------------------------------------------
+
+def _build_bundle(
+    *,
+    chunk_signals: np.ndarray,
+    chunk_z: np.ndarray | None,
+    recipe: SignalRecipe,
+    group_needs,
+    envelope_method: BaseEnvelopeMethod | None,
+    has_envelope_batch: bool,
+    chunk_n: int,
+    analysis_context: AnalysisContext,
+) -> RepresentationBundle:
+    """Build a RepresentationBundle for one chunk."""
+
+    # --- Envelope (once per recipe group if needed) ---
+    chunk_envelopes: np.ndarray | None = None
+    if envelope_method is not None:
+        if has_envelope_batch:
+            chunk_envelopes = envelope_method.compute_batch(
+                chunk_signals, chunk_z, None,
+            )
+        else:
+            chunk_envelopes = np.empty_like(chunk_signals)
+            for i in range(chunk_n):
+                chunk_envelopes[i] = envelope_method.compute(
+                    chunk_signals[i], chunk_z, None,
+                )
+
+    # --- Spectral (once per recipe group if needed) ---
+    batch_spectral = None
+    if group_needs.needs_spectral:
+        batch_spectral = compute_spectrum_batch(
+            chunk_signals,
+            chunk_z,
+            include_amplitude=group_needs.amplitude,
+            include_power=group_needs.power,
+            include_complex=group_needs.complex_fft,
+        )
+
+    return RepresentationBundle(
+        signals=chunk_signals,
+        z_axis=chunk_z,
+        recipe=recipe,
+        analysis_context=analysis_context,
+        envelope=chunk_envelopes,
+        spectral=batch_spectral,
+    )
+
+
+# ------------------------------------------------------------------
+# Internal: per-signal fallback
+# ------------------------------------------------------------------
+
+def _evaluate_per_signal(
+    *,
+    metric: BaseMetric,
+    chunk_signals: np.ndarray,
+    chunk_z: np.ndarray | None,
+    bundle: RepresentationBundle,
+    context: dict,
+    accum: _MetricAccum,
+    start: int,
+    chunk_n: int,
+) -> None:
+    """Evaluate a metric per-signal when no ``evaluate_batch`` exists."""
+    metric_needs = resolve_representation_needs(metric)
+    chunk_features: dict[str, list[float]] = {}
+
+    for i in range(chunk_n):
+        sig = chunk_signals[i]
+        env = bundle.envelope[i] if bundle.envelope is not None else None
+
+        # Build per-signal context.
+        sig_ctx: dict = {
+            "analysis_context": bundle.analysis_context,
+        }
+        if metric_needs.needs_spectral and bundle.spectral is not None:
+            # Build a single-signal SpectralResult from the batch data.
+            amp = (
+                bundle.spectral.amplitude[i]
+                if bundle.spectral.amplitude is not None
+                else None
+            )
+            sig_ctx["spectral_result"] = SpectralResult(
+                frequencies=bundle.spectral.frequencies,
+                amplitude=amp if amp is not None else np.array([]),
+                power=(
+                    bundle.spectral.power[i]
+                    if bundle.spectral.power is not None
+                    else None
+                ),
+                complex_fft=(
+                    bundle.spectral.complex_fft[i]
+                    if bundle.spectral.complex_fft is not None
+                    else None
+                ),
+            )
+
+        result = metric.evaluate(sig, chunk_z, env, sig_ctx)
+        accum.score_flat[start + i] = (
+            result.score if result.valid else np.nan
+        )
+        accum.valid_flat[start + i] = result.valid
+        for k, v in result.features.items():
+            if k not in chunk_features:
+                chunk_features[k] = [np.nan] * i
+            chunk_features[k].append(
+                float(v) if result.valid else np.nan
+            )
+        for k in chunk_features:
+            if k not in result.features:
+                chunk_features[k].append(np.nan)
+
+    accum.feature_chunks.append(
+        {k: np.array(v) for k, v in chunk_features.items()}
+    )
+
+
+# ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
 
@@ -374,6 +508,8 @@ def _recipe_to_batch_preprocess(
         fns.append(normalize_amplitude_batch)
     if recipe.smooth:
         fns.append(smooth_batch)
+    if recipe.detrend:
+        fns.append(detrend_linear_batch)
     return fns if fns else None
 
 

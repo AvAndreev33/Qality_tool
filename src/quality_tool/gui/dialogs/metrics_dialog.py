@@ -1,15 +1,17 @@
 """Metric selection dialog for Quality_tool.
 
-Presents checkboxes for all registered metrics and returns the list
-of selected metric names.
+Presents checkboxes for all registered metrics, grouped by category,
+and returns the list of selected metric names.
 """
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -17,9 +19,16 @@ from PySide6.QtWidgets import (
 
 from quality_tool.metrics.registry import MetricRegistry
 
+# Category labels shown in the dialog header for each group.
+_CATEGORY_LABELS: dict[str, str] = {
+    "baseline": "Baseline metrics",
+    "noise": "Noise metrics",
+}
+
 
 class MetricsDialog(QDialog):
-    """Checkbox-based dialog for selecting multiple metrics.
+    """Checkbox-based dialog for selecting multiple metrics, grouped
+    by category.
 
     Parameters
     ----------
@@ -39,18 +48,26 @@ class MetricsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Select metrics")
-        self.resize(300, 200)
+        self.resize(340, 300)
 
         selected = selected or []
         self._checkboxes: dict[str, QCheckBox] = {}
 
         layout = QVBoxLayout(self)
 
-        for name in registry.list_metrics():
-            cb = QCheckBox(name)
-            cb.setChecked(name in selected)
-            self._checkboxes[name] = cb
-            layout.addWidget(cb)
+        for category, items in registry.list_grouped():
+            # Section header.
+            label_text = _CATEGORY_LABELS.get(category, category.title())
+            header = QLabel(f"<b>{label_text}</b>")
+            header.setContentsMargins(0, 6, 0, 2)
+            layout.addWidget(header)
+
+            # Checkboxes for each metric in this group.
+            for name, display_name in items:
+                cb = QCheckBox(display_name)
+                cb.setChecked(name in selected)
+                self._checkboxes[name] = cb
+                layout.addWidget(cb)
 
         layout.addStretch()
 

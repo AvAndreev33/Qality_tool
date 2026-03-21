@@ -55,12 +55,23 @@ class SignalRecipe:
     baseline: bool = False
     normalize: bool = False
     smooth: bool = False
+    detrend: bool = False
     roi_enabled: bool = False
     segment_size: int | None = None
 
 
 #: The identity recipe — raw signal with no processing.
 RAW = SignalRecipe()
+
+#: ROI extraction only — no mean subtraction, no detrending.
+ROI_ONLY = SignalRecipe(roi_enabled=True)
+
+#: ROI + mean subtraction + linear detrending.
+ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED = SignalRecipe(
+    baseline=True,
+    detrend=True,
+    roi_enabled=True,
+)
 
 
 def resolve_effective_recipe(

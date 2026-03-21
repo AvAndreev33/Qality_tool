@@ -55,6 +55,7 @@ from quality_tool.gui.windows.histogram_window import HistogramWindow
 from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
+from quality_tool.metrics.noise import ALL_NOISE_METRICS
 from quality_tool.metrics.registry import MetricRegistry
 from quality_tool.preprocessing.basic import (
     normalize_amplitude,
@@ -69,11 +70,15 @@ _SLIDER_STEPS = 1000
 
 
 def _build_default_registry() -> MetricRegistry:
-    """Create a registry populated with the baseline metrics."""
+    """Create a registry populated with baseline and noise metrics."""
     registry = MetricRegistry()
+    # Baseline metrics.
     registry.register(FringeVisibility())
     registry.register(SNR())
     registry.register(PowerBandRatio())
+    # Noise metrics.
+    for m in ALL_NOISE_METRICS:
+        registry.register(m)
     return registry
 
 

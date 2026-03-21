@@ -36,6 +36,8 @@ class SNR:
     """
 
     name: str = "snr"
+    category: str = "baseline"
+    display_name: str = "SNR"
     signal_recipe: SignalRecipe = RAW
     recipe_binding: RecipeBinding = "active"
     needs_spectral: bool = False
