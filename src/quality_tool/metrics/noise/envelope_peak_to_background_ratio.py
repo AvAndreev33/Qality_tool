@@ -36,6 +36,8 @@ class EnvelopePeakToBackgroundRatio:
     name: str = "envelope_peak_to_background_ratio"
     category: str = "noise"
     display_name: str = "Envelope Peak/Background"
+    score_direction: str = "higher_better"
+    score_scale: str = "positive_unbounded"
     signal_recipe: SignalRecipe = ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED
     recipe_binding: RecipeBinding = "fixed"
     representation_needs: RepresentationNeeds = RepresentationNeeds(envelope=True)

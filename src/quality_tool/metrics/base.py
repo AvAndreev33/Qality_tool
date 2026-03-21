@@ -36,12 +36,16 @@ evaluation over a 2-D chunk of signals.  The evaluator will prefer
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 import numpy as np
 
 from quality_tool.core.models import MetricResult
 from quality_tool.evaluation.recipe import RecipeBinding, SignalRecipe
+
+# Score-semantics types used by the normalization / comparison layer.
+ScoreDirection = Literal["higher_better", "lower_better"]
+ScoreScale = Literal["bounded_01", "positive_unbounded", "db_like"]
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,9 @@ class BaseMetric(Protocol):
     * ``category`` — grouping label for GUI display (e.g. ``"baseline"``,
       ``"noise"``).
     * ``display_name`` — human-readable label for GUI display.
+    * ``score_direction`` — ``"higher_better"`` or ``"lower_better"``.
+    * ``score_scale`` — ``"bounded_01"``, ``"positive_unbounded"``,
+      or ``"db_like"``.
     """
 
     name: str
@@ -164,6 +171,16 @@ def resolve_display_name(metric: BaseMetric) -> str:
     Falls back to ``metric.name`` if no ``display_name`` is set.
     """
     return getattr(metric, "display_name", None) or metric.name
+
+
+def resolve_score_direction(metric: BaseMetric) -> ScoreDirection:
+    """Return the metric's score direction, defaulting to ``"higher_better"``."""
+    return getattr(metric, "score_direction", "higher_better")
+
+
+def resolve_score_scale(metric: BaseMetric) -> ScoreScale:
+    """Return the metric's score scale, defaulting to ``"positive_unbounded"``."""
+    return getattr(metric, "score_scale", "positive_unbounded")
 
 
 def resolve_representation_needs(metric: BaseMetric) -> RepresentationNeeds:

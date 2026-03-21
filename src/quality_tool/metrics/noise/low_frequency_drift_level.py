@@ -53,6 +53,8 @@ class LowFrequencyDriftLevel:
     name: str = "low_frequency_drift_level"
     category: str = "noise"
     display_name: str = "Low-Freq Drift Level"
+    score_direction: str = "lower_better"
+    score_scale: str = "positive_unbounded"
     signal_recipe: SignalRecipe = ROI_ONLY
     recipe_binding: RecipeBinding = "fixed"
     representation_needs: RepresentationNeeds = RepresentationNeeds()

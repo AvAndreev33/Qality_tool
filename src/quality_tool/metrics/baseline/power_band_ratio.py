@@ -48,6 +48,8 @@ class PowerBandRatio:
     name: str = "power_band_ratio"
     category: str = "baseline"
     display_name: str = "Power Band Ratio"
+    score_direction: str = "higher_better"
+    score_scale: str = "bounded_01"
     signal_recipe: SignalRecipe = RAW
     recipe_binding: RecipeBinding = "active"
     needs_spectral: bool = True

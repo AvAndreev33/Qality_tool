@@ -50,20 +50,36 @@ from quality_tool.gui.dialogs.processing_dialog import ProcessingDialog
 from quality_tool.gui.widgets.map_viewer import MapViewer
 from quality_tool.gui.widgets.signal_inspector import SignalInspector
 from quality_tool.gui.widgets.tool_panels import MapToolsPanel, SignalToolsPanel
+from quality_tool.comparison.normalization import (
+    normalize_single,
+    reference_range_from_map,
+)
 from quality_tool.gui.windows.compare_window import CompareWindow
 from quality_tool.gui.windows.histogram_window import HistogramWindow
+from quality_tool.gui.windows.pixel_metrics_chart_window import (
+    PixelMetricsChartWindow,
+)
+from quality_tool.gui.windows.pixel_metrics_table_window import (
+    PixelMetricsTableWindow,
+)
 from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
 from quality_tool.metrics.noise import ALL_NOISE_METRICS
 from quality_tool.metrics.registry import MetricRegistry
 from quality_tool.preprocessing.basic import (
+    detrend_linear,
     normalize_amplitude,
     smooth,
     subtract_baseline,
 )
 from quality_tool.preprocessing.roi import extract_roi
-from quality_tool.spectral.fft import compute_spectrum
+from quality_tool.metrics.base import (
+    resolve_category,
+    resolve_score_direction,
+    resolve_score_scale,
+)
+from quality_tool.spectral.fft import compute_spectrum, find_carrier_band
 
 # Number of discrete steps the threshold slider is divided into.
 _SLIDER_STEPS = 1000
@@ -122,6 +138,7 @@ class MainWindow(QMainWindow):
         self._display_mode: str = "score"  # "score" | "masked" | "mask_only"
         self._compare_windows: list[CompareWindow] = []
         self._histogram_windows: list[HistogramWindow] = []
+        self._pixel_metric_windows: list[QWidget] = []
 
         # Mask-source metric: which metric's score map drives the threshold.
         self._mask_source_metric: str | None = None
@@ -190,6 +207,9 @@ class MainWindow(QMainWindow):
         )
         self._signal_tools.envelope_toggled.connect(
             self._on_envelope_toggled,
+        )
+        self._signal_tools.pixel_metrics_clicked.connect(
+            self._on_pixel_metrics,
         )
 
     # ==================================================================
@@ -406,6 +426,10 @@ class MainWindow(QMainWindow):
 
         self._show_current_map()
 
+        # Enable pixel-metrics button if a pixel is already selected.
+        if self._selected_pixel is not None:
+            self._signal_tools.btn_pixel_metrics.setEnabled(True)
+
         total = len(self._computed_results)
         new = len(new_results)
         reused = total - new
@@ -432,6 +456,11 @@ class MainWindow(QMainWindow):
         self._selected_pixel = (row, col)
         self._update_signal_display(row, col)
 
+        # Enable pixel-metrics button when pixel + results are available.
+        self._signal_tools.btn_pixel_metrics.setEnabled(
+            bool(self._computed_results),
+        )
+
         value = self._map_viewer.value_at(row, col)
         name = self._current_map_name or "—"
         val_str = f"{value:.4g}" if value is not None else "—"
@@ -450,6 +479,55 @@ class MainWindow(QMainWindow):
         self._envelope_overlay = checked
         if self._selected_pixel is not None:
             self._update_signal_display(*self._selected_pixel)
+
+    def _on_pixel_metrics(self) -> None:
+        """Open table and bar chart windows for the selected pixel."""
+        if self._selected_pixel is None or not self._computed_results:
+            self._status.showMessage("No pixel or metrics available")
+            return
+
+        row, col = self._selected_pixel
+        data = self._gather_pixel_metrics_data(row, col)
+
+        table_win = PixelMetricsTableWindow((row, col), data)
+        table_win.show()
+        self._pixel_metric_windows.append(table_win)
+
+        chart_win = PixelMetricsChartWindow((row, col), data)
+        chart_win.show()
+        self._pixel_metric_windows.append(chart_win)
+
+    def _gather_pixel_metrics_data(
+        self, row: int, col: int,
+    ) -> list[dict]:
+        """Build per-pixel metric data for the table and chart windows."""
+        data: list[dict] = []
+        for name, result in self._computed_results.items():
+            metric = self._registry.get(name)
+            valid = bool(result.valid_map[row, col])
+            native_score = float(result.score_map[row, col])
+
+            direction = resolve_score_direction(metric)
+            scale = resolve_score_scale(metric)
+
+            if valid:
+                ref_min, ref_max = reference_range_from_map(
+                    result.score_map, result.valid_map, scale,
+                )
+                norm_score = normalize_single(
+                    native_score, direction, scale, ref_min, ref_max,
+                )
+            else:
+                norm_score = float("nan")
+
+            data.append({
+                "name": name,
+                "category": resolve_category(metric),
+                "native_score": native_score,
+                "normalized_score": norm_score,
+                "valid": valid,
+            })
+        return data
 
     def _on_mask_source_changed(self, text: str) -> None:
         """Update mask-source metric and sync slider range."""
@@ -685,7 +763,26 @@ class MainWindow(QMainWindow):
                 )
                 return
             self._signal_inspector.update_spectrum(
-                spectral.frequencies, spectral.amplitude, title=title,
+                spectral.frequencies, spectral.amplitude,
+                title=f"{title} — raw spectrum",
+            )
+
+        elif mode == "Processed spectrum":
+            processed = self._prepare_noise_recipe_signal(signal)
+            try:
+                spectral = compute_spectrum(processed)
+            except Exception:
+                self._signal_inspector.update_signal(
+                    signal, z_axis, title=f"{title} (spectrum error)",
+                )
+                return
+            band_info = find_carrier_band(
+                spectral.frequencies, spectral.amplitude,
+            )
+            self._signal_inspector.update_spectrum(
+                spectral.frequencies, spectral.amplitude,
+                title=f"{title} — processed spectrum",
+                band_info=band_info,
             )
 
         else:
@@ -750,6 +847,23 @@ class MainWindow(QMainWindow):
             fns.append(smooth)
         return fns
 
+    def _prepare_noise_recipe_signal(self, signal: np.ndarray) -> np.ndarray:
+        """Prepare a signal using the fixed noise-metric recipe.
+
+        Applies baseline subtraction, linear detrending, and ROI
+        extraction — the same steps as
+        ``ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED`` used by noise metrics.
+        This is independent of the GUI processing settings.
+        """
+        processed = subtract_baseline(signal.copy())
+        processed = detrend_linear(processed)
+        seg_size = self._processing.get("segment_size", 128)
+        try:
+            processed = extract_roi(processed, seg_size)
+        except Exception:
+            pass
+        return processed
+
     def _get_segment_size(self) -> int | None:
         """Return segment_size if ROI is enabled, else None."""
         if self._processing.get("roi_enabled"):
@@ -781,6 +895,7 @@ class MainWindow(QMainWindow):
         self._display_mode = "score"
         self._selected_pixel = None
         self._envelope_overlay = False
+        self._signal_tools.btn_pixel_metrics.setEnabled(False)
         self._display_combo.blockSignals(True)
         self._display_combo.setCurrentText("score")
         self._display_combo.blockSignals(False)

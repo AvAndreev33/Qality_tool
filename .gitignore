@@ -524,3 +524,11 @@ tests/test_evaluation/__pycache__/test_evaluator_bundles.cpython-314-pytest-9.0.
 tests/test_evaluation/__pycache__/test_planner_needs.cpython-314-pytest-9.0.2.pyc
 src/quality_tool/evaluation/__pycache__/bundle.cpython-314.pyc
 src/quality_tool/core/__pycache__/analysis_context.cpython-314.pyc
+src/quality_tool/gui/windows/__pycache__/pixel_metrics_chart_window.cpython-314.pyc
+src/quality_tool/gui/windows/__pycache__/pixel_metrics_table_window.cpython-314.pyc
+src/quality_tool/comparison/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/comparison/__pycache__/normalization.cpython-314.pyc
+tests/test_comparison/__pycache__/__init__.cpython-314.pyc
+tests/test_comparison/__pycache__/test_normalization.cpython-314-pytest-9.0.2.pyc
+tests/test_gui/__pycache__/test_pixel_metrics_windows.cpython-314-pytest-9.0.2.pyc
+tests/test_spectral/__pycache__/test_band_finding.cpython-314-pytest-9.0.2.pyc

@@ -207,6 +207,48 @@ def compute_spectrum_batch(
 # Frequency-band helper
 # ------------------------------------------------------------------
 
+def find_carrier_band(
+    frequencies: np.ndarray,
+    amplitude: np.ndarray,
+    band_half_width_bins: int = 5,
+    dc_exclude: bool = True,
+) -> tuple[float, float, float] | None:
+    """Find the carrier frequency and its surrounding band.
+
+    Parameters
+    ----------
+    frequencies : np.ndarray
+        1-D one-sided frequency array.
+    amplitude : np.ndarray
+        1-D amplitude spectrum (same length as *frequencies*).
+    band_half_width_bins : int
+        Half-width Δk around the carrier bin.
+    dc_exclude : bool
+        Exclude DC (index 0) when searching for the peak.
+
+    Returns
+    -------
+    tuple or None
+        ``(carrier_freq, band_low_freq, band_high_freq)`` if a
+        carrier is found, else ``None``.
+    """
+    if amplitude.size < 2:
+        return None
+
+    search = amplitude.copy()
+    if dc_exclude and len(search) > 1:
+        search[0] = -np.inf
+
+    k_c = int(np.argmax(search))
+    if search[k_c] <= 0:
+        return None
+
+    lo = max(0, k_c - band_half_width_bins)
+    hi = min(len(frequencies) - 1, k_c + band_half_width_bins)
+
+    return float(frequencies[k_c]), float(frequencies[lo]), float(frequencies[hi])
+
+
 def frequency_band_indices(
     frequencies: np.ndarray,
     low: float,

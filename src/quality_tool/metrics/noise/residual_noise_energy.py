@@ -85,6 +85,8 @@ class ResidualNoiseEnergy:
     name: str = "residual_noise_energy"
     category: str = "noise"
     display_name: str = "Residual Noise Energy"
+    score_direction: str = "lower_better"
+    score_scale: str = "bounded_01"
     signal_recipe: SignalRecipe = ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED
     recipe_binding: RecipeBinding = "fixed"
     representation_needs: RepresentationNeeds = RepresentationNeeds(complex_fft=True)

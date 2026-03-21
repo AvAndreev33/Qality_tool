@@ -60,6 +60,33 @@ def normalize_amplitude(signal: np.ndarray) -> np.ndarray:
     return (signal - lo) / span
 
 
+def detrend_linear(signal: np.ndarray) -> np.ndarray:
+    """Remove a least-squares linear trend from *signal*.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        1-D input signal.
+
+    Returns
+    -------
+    np.ndarray
+        Detrended signal of the same length.
+    """
+    _validate_signal(signal)
+    m = signal.size
+    x = np.arange(m, dtype=float)
+    x_mean = (m - 1) / 2.0
+    x_centered = x - x_mean
+    ss_x = np.sum(x_centered ** 2)
+    if ss_x == 0:
+        return signal - np.mean(signal)
+    y_mean = np.mean(signal)
+    slope = np.dot(signal, x_centered) / ss_x
+    trend = slope * x_centered + y_mean
+    return signal - trend
+
+
 def smooth(signal: np.ndarray, window_size: int = 5) -> np.ndarray:
     """Apply a uniform moving-average smoothing filter.
 

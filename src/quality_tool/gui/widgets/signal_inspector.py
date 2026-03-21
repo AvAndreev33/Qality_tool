@@ -79,6 +79,7 @@ class SignalInspector(QWidget):
         amplitude: np.ndarray,
         *,
         title: str | None = None,
+        band_info: tuple[float, float, float] | None = None,
     ) -> None:
         """Plot the amplitude spectrum with logarithmic y-scale.
 
@@ -90,8 +91,23 @@ class SignalInspector(QWidget):
             1-D amplitude array.
         title : str or None
             Plot title.
+        band_info : tuple or None
+            ``(carrier_freq, band_low, band_high)`` — if provided, the
+            useful band is highlighted with a shaded span and the
+            carrier frequency is marked with a vertical line.
         """
         self._ax.clear()
+
+        if band_info is not None:
+            carrier, b_lo, b_hi = band_info
+            self._ax.axvspan(
+                b_lo, b_hi, alpha=0.15, color="tab:blue", label="useful band",
+            )
+            self._ax.axvline(
+                carrier, color="tab:blue", linewidth=0.7,
+                linestyle="--", alpha=0.6,
+            )
+
         self._ax.plot(frequencies, amplitude, linewidth=0.8, label="spectrum")
         self._ax.set_yscale("log")
         self._ax.set_xlabel("frequency")

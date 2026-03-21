@@ -54,7 +54,12 @@
       "Bash(py -m pytest tests/ -x -q)",
       "Bash(python -m pytest tests/test_metrics/test_noise_metrics.py -v)",
       "Bash(py -m pytest tests/test_metrics/test_noise_metrics.py -v)",
-      "Bash(py -m pytest tests/ -v)"
+      "Bash(py -m pytest tests/ -v)",
+      "Bash(python -m pytest tests/test_comparison/ tests/test_spectral/test_band_finding.py tests/test_gui/test_pixel_metrics_windows.py -v)",
+      "Bash(py -m pytest tests/test_comparison/ tests/test_spectral/test_band_finding.py tests/test_gui/test_pixel_metrics_windows.py -v)",
+      "Bash(py -m pytest tests/test_comparison/ -v --tb=short)",
+      "Bash(py -c \"from quality_tool.gui.main_window import MainWindow; print\\(''OK''\\)\")",
+      "Bash(py -m pytest tests/ -x -q --tb=short)"
     ]
   }
 }

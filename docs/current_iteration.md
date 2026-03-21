@@ -2,199 +2,209 @@
 
 ## Iteration name
 
-First batch metric implementation — noise metrics + metric grouping in GUI
+Metric comparison layer — normalized scores + spectral band overlay + per-pixel metric inspector
 
 ## Goal
 
-Implement the first larger batch of new metrics using the new architecture:
-- signal recipes
-- recipe binding
-- representation bundles
-- shared analysis context
-- refined spectral layer
+Add a comparison-focused layer on top of the already implemented metrics and GUI workflow.
 
-This iteration should add the first **noise metric group** and integrate it cleanly into the GUI.
+This iteration should introduce:
+- a normalized score layer for comparing different metrics in a common `0..1, higher is better` form
+- useful-band visualization in the spectrum display
+- a per-pixel metric inspector opened from the signal tools panel
+- two comparison views for the selected pixel:
+  - a table with all computed metrics
+  - a horizontal normalized bar chart
 
-It should also make the GUI metric-selection dialog show metrics grouped by class/category, so that already implemented baseline metrics and the new noise metrics are visually separated.
+The goal is to make already implemented metrics much easier to interpret, compare, and debug before implementing the next metric groups.
 
 ---
 
 ## Why this iteration matters
 
-The backend architecture is now ready for larger metric batches:
-- recipe-based signal preparation exists
-- derived representations can be reused per recipe
-- analysis context exists
-- spectral support is stronger
-- multi-metric compute already works
+The project now has:
+- a working backend with multiple metric groups beginning to grow
+- a usable GUI with map viewing, signal inspection, thresholding, and histogram support
+- the first batch of new metrics already implemented
 
-The next logical step is to validate this architecture by implementing the first real metric batch that depends on:
-- fixed prepared recipes
-- spectral reuse
-- envelope reuse
-- shared constants from analysis context
+The next practical need is not another architectural rewrite, but a stronger comparison layer.
 
-The noise metric group is the best first test of this new architecture.
+To evaluate which quality criteria are actually useful, the user needs:
+- a common comparison representation
+- visual feedback for spectral band selection
+- a convenient way to inspect all metric values for the currently selected pixel
+
+This iteration improves interpretability and comparison quality before the next metric batches.
 
 ---
 
 ## In scope
 
-### Noise metric batch implementation
+### Normalized comparison layer
 
-Implement the metrics from `docs/metric_spec_noise.md`.
-
-Target metrics:
-
-- `spectral_snr`
-- `local_snr`
-- `envelope_peak_to_background_ratio`
-- `noise_floor_level`
-- `residual_noise_energy`
-- `high_frequency_noise_level`
-- `low_frequency_drift_level`
-
-These metrics should be implemented according to the current canonical metric-batch spec, not by ad hoc reinterpretation.
-
----
-
-### Use the new architecture correctly
-
-The implementation must use the current backend architecture properly.
-
-That means:
-- use declared signal recipes
-- use fixed recipe binding where specified
-- use representation requirements instead of recomputing things inside each metric
-- use `AnalysisContext` for shared constants/defaults
-- reuse envelope/spectral representations from bundles when available
-- do not duplicate FFT/envelope logic inside each metric unless truly required by a metric that needs a special form not yet provided by the shared layer
-
-This iteration is partly a correctness test of the architecture.
-
----
-
-### Shared analysis-context support for noise metrics
-
-Add any small missing shared analysis-context fields needed by the noise metric batch.
-
-Typical examples:
-- `epsilon`
-- `band_half_width_bins`
-- `drift_window`
-
-If a metric batch spec refers to a shared parameter that is not yet present in `AnalysisContext`, add it there rather than hardcoding the value inside the metric.
-
-Keep these additions minimal and batch-driven.
-
----
-
-### Small spectral/support refinements if needed
-
-Small safe refinements are allowed if they are required for correct implementation of the noise metrics.
-
-Examples:
-- a helper for one-sided power-band selection
-- a helper for symmetric complex-band reconstruction
-- a small utility for excluding DC consistently
-
-Do not redesign the spectral layer broadly in this iteration.
-Only add what is needed for this metric batch.
-
----
-
-### Metric metadata refinement if needed
-
-If some small additions to metric metadata are needed for clean integration, they are allowed.
-
-Examples:
-- metric category/class label
-- display name
-- score direction metadata if not already explicit
-- representation-needs declaration cleanup
-
-Keep this minimal and useful.
-
-Do not introduce a large new metadata framework.
-
----
-
-### Batch + scalar consistency
-
-Where practical, each metric should support the project’s batch-oriented evaluation path.
+Introduce a separate normalization/comparison layer for metric scores.
 
 Requirements:
-- implement behavior consistent with the current evaluator architecture
-- preserve scalar semantics
-- ensure batch behavior matches scalar behavior where both exist
+- normalization must be a separate layer on top of native metric scores
+- native metric values must remain preserved and accessible
+- normalized values must be represented as:
+  - range `[0, 1]`
+  - larger = better
+- metrics that are already naturally in `[0,1]` and higher-better should remain unchanged
+- metrics with other semantics should be mapped according to an explicit normalization policy
 
-The point is not only to add formulas, but to add them in the correct project style.
-
----
-
-### Invalid-case handling
-
-Each metric must handle invalid or unstable cases explicitly.
-
-Examples:
-- empty usable band
-- unstable denominator
-- too few samples outside peak support
-- invalid drift estimate
-- no stable carrier band
-
-Return `valid=False` where appropriate instead of silently producing misleading values.
-
-This must follow the current `MetricResult` / batch result semantics.
+This iteration should not redesign metric math itself.
+It should only add a comparison representation.
 
 ---
 
-### GUI integration — metric grouping
+### Metric score semantics metadata
 
-Update the GUI metric-selection dialog so that metrics are shown grouped by category/class.
+Add minimal metadata needed for normalization.
 
-For this iteration, it is enough to support at least:
-- **Baseline metrics**
-- **Noise metrics**
+At minimum, each metric should be able to declare:
+- score direction:
+  - `higher_better`
+  - `lower_better`
+- score scale type, for example:
+  - `bounded_01`
+  - `positive_unbounded`
+  - `ratio_like`
+  - `log_ratio`
+  - another small minimal set if needed
 
-Expected GUI behavior:
-- already implemented baseline metrics remain visible first
-- then a visible group label or section header appears for `Noise metrics`
-- then the newly added metrics are listed
+Keep this metadata lightweight and close to metric definitions.
 
-Keep this simple and readable.
-It does not need to become a complex tree view unless that is naturally clean.
+Do not implement normalization through hardcoded metric-name checks inside the GUI.
 
 ---
 
-### GUI metric naming
+### Normalization policies
 
-The new metrics should appear in the GUI with readable names.
+Implement a minimal normalization system that can map native scores to normalized comparison scores.
 
 Requirements:
-- keep internal metric identifiers stable
-- allow a human-readable display label if needed
-- do not expose confusing raw Python class names to the user
+- keep the implementation simple and explicit
+- use metric score semantics metadata
+- avoid overcomplicated statistical normalization
+- keep room for future refinement
 
-If a minimal `display_name` field is useful, it may be added.
+For this iteration, a rough but stable normalization is acceptable.
 
-Keep it lightweight.
+Important:
+- invalid native metric values should remain invalid in normalized form
+- normalization must not overwrite native metric results
+
+---
+
+### Spectrum useful-band visualization
+
+Extend the spectrum display in the signal inspector so the user can see the useful spectral band that was used by the corresponding spectral metric logic.
+
+Requirements:
+- show the spectrum as already supported
+- visually mark:
+  - dominant carrier bin / selected peak if available
+  - useful band around that carrier
+- the band should correspond to the current shared band-width logic / analysis context
+- the display should make it easy to understand what region is treated as “signal” and what is treated as outside-band content
+
+A shaded highlighted interval is preferred over barely visible markers if that remains simple.
+
+This iteration is about visualizing the current band selection logic, not redesigning band-selection algorithms.
+
+---
+
+### Signal tools panel integration
+
+Use the existing signal tools panel.
+
+Add a button in the signal tools panel for the selected pixel, for example:
+- `Pixel metrics`
+
+This button should open metric-comparison windows for the currently selected pixel.
+
+Keep this integration simple and aligned with the existing signal tools panel workflow.
+
+---
+
+### Per-pixel metric inspector — table window
+
+Implement a window showing all currently computed metrics for the selected pixel in tabular form.
+
+Requirements:
+- it should use the currently selected pixel from the main viewer
+- it should include all metrics already computed in the current session
+- it should show at least:
+  - metric name
+  - metric group/class if available
+  - native score
+  - normalized score
+  - valid / invalid state
+- it should behave as a snapshot for the currently selected pixel when opened, unless a clearly cleaner live-updating design is already natural in the current codebase
+
+Keep the table readable and simple.
+
+---
+
+### Per-pixel metric inspector — normalized bar chart window
+
+Implement a second comparison window for the selected pixel.
+
+This window should display the normalized scores of all currently computed metrics as a horizontal bar chart.
+
+Requirements:
+- one row per metric
+- metric name on the left
+- normalized score represented as a horizontal bar from `0` to `1`
+- invalid metrics should be handled explicitly and clearly
+- the display should make visual comparison fast and intuitive
+
+This chart should be based on normalized scores, not native scores.
+
+---
+
+### Relationship between the two pixel-inspector windows
+
+The two windows should complement each other:
+
+- **table window** → exact values
+- **horizontal bar chart window** → fast visual comparison
+
+Both should use the same selected pixel and the same currently available computed metrics.
+
+Keep the implementation simple and consistent.
+
+---
+
+### GUI workflow preservation
+
+The existing workflow must remain stable:
+- loading datasets
+- computing metrics
+- switching maps
+- thresholding
+- histogram view
+- signal inspection
+
+This iteration adds a comparison layer; it must not destabilize the current GUI.
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- other metric groups
-- score normalization to `[0, 1]`
-- GUI histogram redesign
-- preprocessing/recipe GUI redesign
+- new metric groups
+- score normalization based on dataset-wide learned statistics
+- radar/spider charts
+- scatter plots between metrics
+- automatic “best metric” recommendation
+- normalization parameter editing in the GUI
 - CUDA backend
-- broad spectral redesign beyond what is minimally needed
-- benchmark workflows
-- synthetic workflows
+- large GUI redesign
+- advanced session persistence
 
-This iteration is specifically about the first real metric batch and clean GUI grouping.
+Keep the iteration focused on comparison usability.
 
 ---
 
@@ -202,41 +212,32 @@ This iteration is specifically about the first real metric batch and clean GUI g
 
 Expected modules to update:
 
-- `src/quality_tool/metrics/base.py` if small metadata additions are needed
-- `src/quality_tool/core/analysis_context.py`
-- `src/quality_tool/evaluation/evaluator.py` only if small support changes are required
-- `src/quality_tool/spectral/fft.py` only if small support changes are required
-- `src/quality_tool/gui/dialogs/metrics_dialog.py`
-- `src/quality_tool/gui/main_window.py` if metric grouping/display-name integration needs it
+- `src/quality_tool/metrics/base.py` if score-semantics metadata is added there
+- `src/quality_tool/gui/main_window.py`
+- `src/quality_tool/gui/widgets/signal_inspector.py`
+- metric modules if minimal score-semantics metadata must be declared there
 
-Expected new metric modules to create under:
+Expected new modules to create:
 
-- `src/quality_tool/metrics/noise/`  
-  or another project-consistent location for the new batch
+- a small normalization/comparison helper module in backend or GUI-support layer
+- `src/quality_tool/gui/windows/pixel_metrics_table_window.py`
+- `src/quality_tool/gui/windows/pixel_metrics_chart_window.py`
 
-Suggested files:
-- `spectral_snr.py`
-- `local_snr.py`
-- `envelope_peak_to_background_ratio.py`
-- `noise_floor_level.py`
-- `residual_noise_energy.py`
-- `high_frequency_noise_level.py`
-- `low_frequency_drift_level.py`
-
-Also update metric registration in the appropriate registry location.
+Optional small helper modules may be added if truly needed, but keep structure minimal.
 
 ---
 
 ## Testing expectations
 
 Add targeted tests for:
-- each new metric on simple synthetic cases
-- invalid-case handling
-- scalar/batch consistency where applicable
-- representation reuse correctness where practical
-- analysis-context parameter usage where practical
-- GUI metric-dialog grouping behavior
-- presence of new metrics in the GUI selection flow
+- normalization behavior for the currently implemented metrics
+- preservation of native score values
+- invalid-value handling in normalized form
+- spectrum useful-band overlay logic where practical
+- per-pixel metric table data generation
+- per-pixel normalized bar chart data generation
+- signal tools panel button wiring
+- no regression of current GUI workflow
 
 Keep tests focused and reliable.
 
@@ -244,34 +245,34 @@ Keep tests focused and reliable.
 
 ## Implementation preferences
 
-- implement metrics from the agreed batch spec
-- keep the architecture-driven style
-- use shared bundles and shared context instead of local duplication
-- keep metadata additions minimal
-- keep GUI grouping simple
-- prefer correctness and clear semantics over premature cleverness
-- do not overbuild abstractions during this batch
+- keep normalization as a separate layer above native scores
+- keep metric semantics metadata lightweight
+- avoid hardcoded GUI-side metric-specific logic
+- keep spectrum-band overlay simple and readable
+- keep pixel comparison windows technical and minimal
+- prefer correctness and interpretability over flashy UI
+- preserve the current workflow and architecture
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- the noise metric batch is implemented
-- the metrics are registered and usable
-- they work with the current recipe/bundle/context architecture
-- invalid cases are handled explicitly
-- needed shared analysis-context parameters are centralized
-- the GUI metric dialog shows baseline metrics and noise metrics as separate visible groups
-- readable metric names are shown in the GUI
-- tests exist and pass
+- native metric scores remain preserved
+- normalized comparison scores exist as a separate layer
+- the spectrum view can show the useful band
+- the signal tools panel includes a button for pixel metric inspection
+- a table window for all computed metrics of the selected pixel exists
+- a horizontal normalized bar chart window for the selected pixel exists
+- both windows work on already computed session metrics
+- the current GUI workflow remains stable
 
 ---
 
 ## Expected assistant workflow
 
-1. read `CLAUDE.md` and the docs, including `docs/current_iteration.md` and `docs/metric_spec_noise.md`
-2. summarize the intended noise-metric batch implementation
+1. read `CLAUDE.md` and the docs
+2. summarize the intended comparison-layer iteration
 3. propose a short implementation plan
 4. implement only this iteration
 5. add targeted tests

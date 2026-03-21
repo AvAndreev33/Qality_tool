@@ -33,6 +33,8 @@ class LocalSNR:
     name: str = "local_snr"
     category: str = "noise"
     display_name: str = "Local SNR"
+    score_direction: str = "higher_better"
+    score_scale: str = "db_like"
     signal_recipe: SignalRecipe = ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED
     recipe_binding: RecipeBinding = "fixed"
     representation_needs: RepresentationNeeds = RepresentationNeeds(envelope=True)

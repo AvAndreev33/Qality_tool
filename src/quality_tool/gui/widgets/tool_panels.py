@@ -79,11 +79,12 @@ class MapToolsPanel(QWidget):
 
 
 class SignalToolsPanel(QWidget):
-    """Narrow panel beside the signal inspector with display mode controls
-    and envelope overlay toggle."""
+    """Narrow panel beside the signal inspector with display mode controls,
+    envelope overlay toggle, and pixel metrics button."""
 
     display_mode_changed = Signal(str)
     envelope_toggled = Signal(bool)
+    pixel_metrics_clicked = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -96,13 +97,18 @@ class SignalToolsPanel(QWidget):
         group_layout = QVBoxLayout(group)
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Raw", "Processed", "Spectrum"])
+        self.mode_combo.addItems(["Raw", "Processed", "Spectrum", "Processed spectrum"])
         self.mode_combo.currentTextChanged.connect(self.display_mode_changed)
         group_layout.addWidget(self.mode_combo)
 
         self.envelope_checkbox = QCheckBox("Envelope overlay")
         self.envelope_checkbox.toggled.connect(self.envelope_toggled)
         group_layout.addWidget(self.envelope_checkbox)
+
+        self.btn_pixel_metrics = QPushButton("Pixel metrics")
+        self.btn_pixel_metrics.setEnabled(False)
+        self.btn_pixel_metrics.clicked.connect(self.pixel_metrics_clicked)
+        group_layout.addWidget(self.btn_pixel_metrics)
 
         layout.addWidget(group)
         layout.addStretch()

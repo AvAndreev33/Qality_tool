@@ -38,6 +38,8 @@ class SNR:
     name: str = "snr"
     category: str = "baseline"
     display_name: str = "SNR"
+    score_direction: str = "higher_better"
+    score_scale: str = "positive_unbounded"
     signal_recipe: SignalRecipe = RAW
     recipe_binding: RecipeBinding = "active"
     needs_spectral: bool = False

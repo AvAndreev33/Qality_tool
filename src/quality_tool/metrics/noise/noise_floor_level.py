@@ -38,6 +38,8 @@ class NoiseFloorLevel:
     name: str = "noise_floor_level"
     category: str = "noise"
     display_name: str = "Noise Floor Level"
+    score_direction: str = "lower_better"
+    score_scale: str = "positive_unbounded"
     signal_recipe: SignalRecipe = ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED
     recipe_binding: RecipeBinding = "fixed"
     representation_needs: RepresentationNeeds = RepresentationNeeds(power=True)

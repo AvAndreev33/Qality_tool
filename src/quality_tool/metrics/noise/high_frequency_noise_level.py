@@ -37,6 +37,8 @@ class HighFrequencyNoiseLevel:
     name: str = "high_frequency_noise_level"
     category: str = "noise"
     display_name: str = "High-Freq Noise Level"
+    score_direction: str = "lower_better"
+    score_scale: str = "bounded_01"
     signal_recipe: SignalRecipe = ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED
     recipe_binding: RecipeBinding = "fixed"
     representation_needs: RepresentationNeeds = RepresentationNeeds(power=True)
