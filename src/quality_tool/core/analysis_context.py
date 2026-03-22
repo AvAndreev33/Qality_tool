@@ -42,6 +42,21 @@ class AnalysisContext:
     default_segment_size : int
         Fallback ROI segment size for fixed recipes when neither the
         recipe nor the active session provides one.
+    expected_period_samples : int
+        Approximate expected fringe period in samples (T_exp).
+        Used by regularity metrics for autocorrelation search window,
+        peak distance constraints, and zero-crossing filtering.
+    peak_min_distance_fraction : float
+        Minimum inter-peak distance as a fraction of
+        ``expected_period_samples``.  Used for extrema detection in
+        regularity metrics.
+    period_search_tolerance_fraction : float
+        Fractional tolerance (δ_T) around ``expected_period_samples``
+        defining the search window for autocorrelation and
+        zero-crossing metrics.
+    cycle_resample_length : int
+        Fixed length to which each detected cycle is resampled for
+        shape-comparison in ``local_oscillation_regularity``.
     """
 
     epsilon: float = 1e-12
@@ -52,6 +67,10 @@ class AnalysisContext:
     band_half_width_bins: int = 5
     drift_window: int = 31
     default_segment_size: int = 128
+    expected_period_samples: int = 4
+    peak_min_distance_fraction: float = 0.6
+    period_search_tolerance_fraction: float = 0.3
+    cycle_resample_length: int = 64
 
 
 def default_analysis_context() -> AnalysisContext:

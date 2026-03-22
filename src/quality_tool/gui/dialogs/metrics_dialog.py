@@ -23,6 +23,7 @@ from quality_tool.metrics.registry import MetricRegistry
 _CATEGORY_LABELS: dict[str, str] = {
     "baseline": "Baseline metrics",
     "noise": "Noise metrics",
+    "regularity": "Regularity metrics",
 }
 
 

@@ -532,3 +532,10 @@ tests/test_comparison/__pycache__/__init__.cpython-314.pyc
 tests/test_comparison/__pycache__/test_normalization.cpython-314-pytest-9.0.2.pyc
 tests/test_gui/__pycache__/test_pixel_metrics_windows.cpython-314-pytest-9.0.2.pyc
 tests/test_spectral/__pycache__/test_band_finding.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/metrics/regularity/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/metrics/regularity/__pycache__/_regularity_helpers.cpython-314.pyc
+src/quality_tool/metrics/regularity/__pycache__/autocorrelation_peak_strength.cpython-314.pyc
+src/quality_tool/metrics/regularity/__pycache__/jitter_of_extrema.cpython-314.pyc
+src/quality_tool/metrics/regularity/__pycache__/local_oscillation_regularity.cpython-314.pyc
+src/quality_tool/metrics/regularity/__pycache__/zero_crossing_stability.cpython-314.pyc
+tests/test_metrics/__pycache__/test_regularity_metrics.cpython-314-pytest-9.0.2.pyc

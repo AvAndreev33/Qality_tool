@@ -140,6 +140,7 @@ def evaluate_metric_maps(
     envelope_method: BaseEnvelopeMethod | None = None,
     analysis_context: AnalysisContext | None = None,
     chunk_size: int = _DEFAULT_CHUNK,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> dict[str, MetricMapResult]:
     """Evaluate multiple metrics on every pixel signal in *signal_set*.
 
@@ -161,6 +162,10 @@ def evaluate_metric_maps(
         Shared constants and heuristics.  Uses defaults if ``None``.
     chunk_size : int
         Number of signals per batch chunk.
+    progress_callback : callable or None
+        Optional ``(processed_pixels, total_pixels)`` callback invoked
+        after each chunk.  Can be used to update a progress bar or
+        call ``QApplication.processEvents()`` to keep the GUI alive.
 
     Returns
     -------
@@ -211,6 +216,7 @@ def evaluate_metric_maps(
             analysis_context=analysis_context,
             chunk_size=chunk_size,
             active_recipe=active_recipe,
+            progress_callback=progress_callback,
         )
         results.update(group_results)
 
@@ -233,6 +239,7 @@ def _evaluate_recipe_group(
     analysis_context: AnalysisContext,
     chunk_size: int,
     active_recipe: SignalRecipe | None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> dict[str, MetricMapResult]:
     """Evaluate all metrics in a single recipe group."""
     recipe = group.recipe
@@ -325,6 +332,10 @@ def _evaluate_recipe_group(
                 )
 
             accum.chunk_ranges.append((start, end))
+
+        # Notify caller about progress (e.g. to keep GUI alive).
+        if progress_callback is not None:
+            progress_callback(end, n_total)
 
     # --- Assemble final results ---
     out: dict[str, MetricMapResult] = {}

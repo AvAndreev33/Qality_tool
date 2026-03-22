@@ -59,7 +59,17 @@
       "Bash(py -m pytest tests/test_comparison/ tests/test_spectral/test_band_finding.py tests/test_gui/test_pixel_metrics_windows.py -v)",
       "Bash(py -m pytest tests/test_comparison/ -v --tb=short)",
       "Bash(py -c \"from quality_tool.gui.main_window import MainWindow; print\\(''OK''\\)\")",
-      "Bash(py -m pytest tests/ -x -q --tb=short)"
+      "Bash(py -m pytest tests/ -x -q --tb=short)",
+      "Bash(find /c/Users/avand/PycharmProjects/wli_research_workbench -type f -name *metrics*dialog* -o -name *metric*widget*)",
+      "Bash(find /c/Users/avand/PycharmProjects/wli_research_workbench/tests -name *test*metric* -type f)",
+      "Bash(python -m pytest tests/test_metrics/test_regularity_metrics.py -v)",
+      "Bash(py -m pytest tests/test_metrics/test_regularity_metrics.py -v)",
+      "Bash(py -m pytest tests/ --tb=short -q)",
+      "Bash(python3:*)",
+      "Bash(git status:*)",
+      "Bash(py -m pytest tests/test_metrics/test_regularity_metrics.py -v --tb=short)",
+      "Bash(py -c \":*)",
+      "Bash(py -m pytest tests/test_metrics/test_regularity_metrics.py -q --tb=short)"
     ]
   }
 }

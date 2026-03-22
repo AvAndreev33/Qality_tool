@@ -19,7 +19,7 @@ Layout:
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -66,6 +66,7 @@ from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
 from quality_tool.metrics.noise import ALL_NOISE_METRICS
+from quality_tool.metrics.regularity import ALL_REGULARITY_METRICS
 from quality_tool.metrics.registry import MetricRegistry
 from quality_tool.preprocessing.basic import (
     detrend_linear,
@@ -94,6 +95,9 @@ def _build_default_registry() -> MetricRegistry:
     registry.register(PowerBandRatio())
     # Noise metrics.
     for m in ALL_NOISE_METRICS:
+        registry.register(m)
+    # Regularity metrics.
+    for m in ALL_REGULARITY_METRICS:
         registry.register(m)
     return registry
 
@@ -401,12 +405,21 @@ class MainWindow(QMainWindow):
         )
         self._status.repaint()
 
+        def _progress(done: int, total: int) -> None:
+            pct = int(100 * done / total) if total else 100
+            self._status.showMessage(
+                f"Computing {', '.join(names_to_compute)}… {pct}%"
+            )
+            QCoreApplication.processEvents()
+
         try:
             new_results = evaluate_metric_maps(
                 self._signal_set,
                 metrics_to_compute,
                 active_recipe=active_recipe,
                 envelope_method=envelope_method,
+                progress_callback=_progress,
+                chunk_size=5_000,
             )
         except Exception as exc:
             QMessageBox.critical(self, "Compute error", str(exc))
