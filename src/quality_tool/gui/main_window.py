@@ -67,6 +67,7 @@ from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
 from quality_tool.metrics.noise import ALL_NOISE_METRICS
 from quality_tool.metrics.regularity import ALL_REGULARITY_METRICS
+from quality_tool.metrics.envelope import ALL_ENVELOPE_METRICS
 from quality_tool.metrics.registry import MetricRegistry
 from quality_tool.preprocessing.basic import (
     detrend_linear,
@@ -98,6 +99,9 @@ def _build_default_registry() -> MetricRegistry:
         registry.register(m)
     # Regularity metrics.
     for m in ALL_REGULARITY_METRICS:
+        registry.register(m)
+    # Envelope metrics.
+    for m in ALL_ENVELOPE_METRICS:
         registry.register(m)
     return registry
 

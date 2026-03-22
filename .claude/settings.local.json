@@ -69,7 +69,11 @@
       "Bash(git status:*)",
       "Bash(py -m pytest tests/test_metrics/test_regularity_metrics.py -v --tb=short)",
       "Bash(py -c \":*)",
-      "Bash(py -m pytest tests/test_metrics/test_regularity_metrics.py -q --tb=short)"
+      "Bash(py -m pytest tests/test_metrics/test_regularity_metrics.py -q --tb=short)",
+      "Bash(python -m pytest tests/test_metrics/test_envelope_metrics.py -v)",
+      "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v)",
+      "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v --tb=short -k \"FAILED or sidelobe_no or single_peakness_double or secondary_peaks_gaussian or no_secondary\")",
+      "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v -k \"dialog or registry\")"
     ]
   }
 }

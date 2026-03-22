@@ -2,6 +2,10 @@
 
 Presents checkboxes for all registered metrics, grouped by category,
 and returns the list of selected metric names.
+
+Groups are arranged in a two-column layout to keep the dialog compact:
+left column holds Baseline / Noise / Regularity metrics, right column
+holds Envelope metrics.
 """
 
 from __future__ import annotations
@@ -24,12 +28,16 @@ _CATEGORY_LABELS: dict[str, str] = {
     "baseline": "Baseline metrics",
     "noise": "Noise metrics",
     "regularity": "Regularity metrics",
+    "envelope": "Envelope metrics",
 }
+
+# Categories placed in the right column.
+_RIGHT_COLUMN_CATEGORIES: set[str] = {"envelope"}
 
 
 class MetricsDialog(QDialog):
     """Checkbox-based dialog for selecting multiple metrics, grouped
-    by category.
+    by category in a two-column layout.
 
     Parameters
     ----------
@@ -49,29 +57,46 @@ class MetricsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Select metrics")
-        self.resize(340, 300)
+        self.resize(560, 380)
 
         selected = selected or []
         self._checkboxes: dict[str, QCheckBox] = {}
 
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+
+        # --- two-column area ---
+        columns = QHBoxLayout()
+        left_col = QVBoxLayout()
+        right_col = QVBoxLayout()
 
         for category, items in registry.list_grouped():
-            # Section header.
+            target = (
+                right_col
+                if category in _RIGHT_COLUMN_CATEGORIES
+                else left_col
+            )
+
             label_text = _CATEGORY_LABELS.get(category, category.title())
             header = QLabel(f"<b>{label_text}</b>")
             header.setContentsMargins(0, 6, 0, 2)
-            layout.addWidget(header)
+            target.addWidget(header)
 
-            # Checkboxes for each metric in this group.
             for name, display_name in items:
                 cb = QCheckBox(display_name)
                 cb.setChecked(name in selected)
                 self._checkboxes[name] = cb
-                layout.addWidget(cb)
+                target.addWidget(cb)
 
-        layout.addStretch()
+        left_col.addStretch()
+        right_col.addStretch()
 
+        columns.addLayout(left_col)
+        columns.addSpacing(24)
+        columns.addLayout(right_col)
+
+        outer.addLayout(columns)
+
+        # --- button row ---
         btn_row = QHBoxLayout()
         btn_ok = QPushButton("OK")
         btn_ok.clicked.connect(self.accept)
@@ -80,7 +105,7 @@ class MetricsDialog(QDialog):
         btn_row.addStretch()
         btn_row.addWidget(btn_ok)
         btn_row.addWidget(btn_cancel)
-        layout.addLayout(btn_row)
+        outer.addLayout(btn_row)
 
     def selected_metrics(self) -> list[str]:
         """Return the list of checked metric names."""

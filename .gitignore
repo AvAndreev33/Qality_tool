@@ -539,3 +539,14 @@ src/quality_tool/metrics/regularity/__pycache__/jitter_of_extrema.cpython-314.py
 src/quality_tool/metrics/regularity/__pycache__/local_oscillation_regularity.cpython-314.pyc
 src/quality_tool/metrics/regularity/__pycache__/zero_crossing_stability.cpython-314.pyc
 tests/test_metrics/__pycache__/test_regularity_metrics.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/metrics/envelope/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/_envelope_helpers.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/envelope_area.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/envelope_height.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/envelope_sharpness.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/envelope_symmetry.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/envelope_width.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/main_peak_to_sidelobe_ratio.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/num_significant_secondary_peaks.cpython-314.pyc
+src/quality_tool/metrics/envelope/__pycache__/single_peakness.cpython-314.pyc
+tests/test_metrics/__pycache__/test_envelope_metrics.cpython-314-pytest-9.0.2.pyc

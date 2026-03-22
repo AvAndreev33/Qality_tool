@@ -57,6 +57,22 @@ class AnalysisContext:
     cycle_resample_length : int
         Fixed length to which each detected cycle is resampled for
         shape-comparison in ``local_oscillation_regularity``.
+    alpha_main_support : float
+        Fraction of the envelope peak used to define the main-peak
+        support region: ``W_main = {n : e[n] >= alpha * e_peak}``.
+        Used by envelope metrics for single-peakness, sidelobe ratio,
+        and secondary-peak counting.
+    beta_secondary_peak : float
+        Fraction of the envelope peak above which a secondary peak
+        is considered significant.  Used by
+        ``num_significant_secondary_peaks``.
+    secondary_peak_min_distance : int
+        Minimum sample distance between detected secondary peaks
+        outside the main-peak support.
+    secondary_peak_min_prominence : float
+        Minimum prominence for secondary-peak detection outside the
+        main-peak support.  Set to 0.0 to rely only on height
+        thresholding via ``beta_secondary_peak``.
     """
 
     epsilon: float = 1e-12
@@ -71,6 +87,10 @@ class AnalysisContext:
     peak_min_distance_fraction: float = 0.6
     period_search_tolerance_fraction: float = 0.3
     cycle_resample_length: int = 64
+    alpha_main_support: float = 0.1
+    beta_secondary_peak: float = 0.1
+    secondary_peak_min_distance: int = 3
+    secondary_peak_min_prominence: float = 0.0
 
 
 def default_analysis_context() -> AnalysisContext:
