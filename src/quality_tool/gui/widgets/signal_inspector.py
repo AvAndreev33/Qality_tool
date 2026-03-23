@@ -80,6 +80,7 @@ class SignalInspector(QWidget):
         *,
         title: str | None = None,
         band_info: tuple[float, float, float] | None = None,
+        expected_band_info: tuple[float, float, float] | None = None,
     ) -> None:
         """Plot the amplitude spectrum with logarithmic y-scale.
 
@@ -92,16 +93,31 @@ class SignalInspector(QWidget):
         title : str or None
             Plot title.
         band_info : tuple or None
-            ``(carrier_freq, band_low, band_high)`` — if provided, the
-            useful band is highlighted with a shaded span and the
-            carrier frequency is marked with a vertical line.
+            ``(carrier_freq, band_low, band_high)`` — empirically
+            detected band.  Highlighted with a blue shaded span.
+        expected_band_info : tuple or None
+            ``(expected_carrier_freq, band_low, band_high)`` —
+            metadata-derived expected band.  Highlighted with an
+            orange shaded span.
         """
         self._ax.clear()
+
+        if expected_band_info is not None:
+            e_carrier, e_lo, e_hi = expected_band_info
+            self._ax.axvspan(
+                e_lo, e_hi, alpha=0.12, color="tab:orange",
+                label="expected band",
+            )
+            self._ax.axvline(
+                e_carrier, color="tab:orange", linewidth=0.7,
+                linestyle=":", alpha=0.7,
+            )
 
         if band_info is not None:
             carrier, b_lo, b_hi = band_info
             self._ax.axvspan(
-                b_lo, b_hi, alpha=0.15, color="tab:blue", label="useful band",
+                b_lo, b_hi, alpha=0.15, color="tab:blue",
+                label="empirical band",
             )
             self._ax.axvline(
                 carrier, color="tab:blue", linewidth=0.7,

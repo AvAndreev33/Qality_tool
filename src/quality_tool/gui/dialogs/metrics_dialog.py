@@ -29,10 +29,11 @@ _CATEGORY_LABELS: dict[str, str] = {
     "noise": "Noise metrics",
     "regularity": "Regularity metrics",
     "envelope": "Envelope metrics",
+    "spectral": "Spectral metrics",
 }
 
 # Categories placed in the right column.
-_RIGHT_COLUMN_CATEGORIES: set[str] = {"envelope"}
+_RIGHT_COLUMN_CATEGORIES: set[str] = {"envelope", "spectral"}
 
 
 class MetricsDialog(QDialog):
@@ -57,7 +58,7 @@ class MetricsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Select metrics")
-        self.resize(560, 380)
+        self.resize(620, 520)
 
         selected = selected or []
         self._checkboxes: dict[str, QCheckBox] = {}

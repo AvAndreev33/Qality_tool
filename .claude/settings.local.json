@@ -76,7 +76,11 @@
       "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v -k \"dialog or registry\")",
       "Bash(python -m pytest tests/test_core/test_analysis_context.py -v)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_core/test_analysis_context.py -v)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/test_evaluator_bundles.py -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/test_evaluator_bundles.py -v)",
+      "Bash(python -m pytest tests/test_spectral/test_priors.py -v --tb=short)",
+      "Bash(py -m pytest tests/test_spectral/test_priors.py -v --tb=short)",
+      "Bash(py -m pytest tests/test_metrics/test_spectral_metrics.py -v --tb=short)",
+      "Bash(py -m pytest tests/test_metrics/test_spectral_metrics.py tests/test_spectral/test_priors.py -v --tb=short)"
     ]
   }
 }

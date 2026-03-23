@@ -72,12 +72,30 @@ class AnalysisContext:
     secondary_peak_min_prominence : float
         Minimum prominence for secondary-peak detection outside the
         main-peak support.
+    prominence_window_bins : int
+        Neighbourhood half-width for the local background estimate
+        used by ``dominant_spectral_peak_prominence``.
+    prominence_exclusion_half_width_bins : int
+        Inner exclusion half-width around the peak bin when
+        estimating the local spectral background.
+    local_spectrum_window_cycles : float
+        Window length for local spectral analysis, expressed in
+        multiples of the expected fringe period.
+    local_spectrum_hop_cycles : float
+        Hop length for local spectral analysis, expressed in
+        multiples of the expected fringe period.
+    coherence_to_bandwidth_scale : float
+        Scale factor used when converting coherence-width-in-samples
+        to expected spectral band half-width.
     wavelength_nm : float or None
         Source wavelength in nanometres, from metadata.  ``None``
         when metadata is unavailable.
     coherence_length_nm : float or None
         Source coherence length in nanometres, from metadata.
         ``None`` when metadata is unavailable.
+    z_step_nm : float or None
+        Effective z-step in nanometres, from metadata.  ``None``
+        when metadata is unavailable.
     """
 
     epsilon: float = 1e-12
@@ -96,9 +114,17 @@ class AnalysisContext:
     secondary_peak_min_distance: int = 3
     secondary_peak_min_prominence: float = 0.0
 
+    # Spectral-metric parameters.
+    prominence_window_bins: int = 20
+    prominence_exclusion_half_width_bins: int = 3
+    local_spectrum_window_cycles: float = 4.0
+    local_spectrum_hop_cycles: float = 2.0
+    coherence_to_bandwidth_scale: float = 0.5
+
     # Metadata-derived fields (None when metadata is unavailable).
     wavelength_nm: float | None = None
     coherence_length_nm: float | None = None
+    z_step_nm: float | None = None
 
 
 # ------------------------------------------------------------------
@@ -169,6 +195,7 @@ def build_analysis_context(signal_set: SignalSet) -> AnalysisContext:
     # Optical metadata — propagate when available.
     wavelength_nm: float | None = None
     coherence_length_nm: float | None = None
+    z_step_nm: float | None = None
     if md is not None:
         wl = md.get("wavelength_nm")
         if wl is not None:
@@ -186,6 +213,14 @@ def build_analysis_context(signal_set: SignalSet) -> AnalysisContext:
                     coherence_length_nm = cl_f
             except (TypeError, ValueError):
                 pass
+        zs = md.get("z_step_nm")
+        if zs is not None:
+            try:
+                zs_f = float(zs)
+                if not math.isnan(zs_f) and zs_f > 0:
+                    z_step_nm = zs_f
+            except (TypeError, ValueError):
+                pass
 
     return AnalysisContext(
         band_half_width_bins=band_half_width_bins,
@@ -193,4 +228,5 @@ def build_analysis_context(signal_set: SignalSet) -> AnalysisContext:
         expected_period_samples=expected_period_samples,
         wavelength_nm=wavelength_nm,
         coherence_length_nm=coherence_length_nm,
+        z_step_nm=z_step_nm,
     )

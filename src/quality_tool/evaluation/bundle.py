@@ -19,6 +19,7 @@ from quality_tool.core.analysis_context import AnalysisContext
 from quality_tool.evaluation.recipe import SignalRecipe
 from quality_tool.metrics.base import RepresentationNeeds
 from quality_tool.spectral.fft import BatchSpectralResult
+from quality_tool.spectral.priors import SpectralPriors, compute_spectral_priors
 
 
 @dataclass
@@ -49,6 +50,17 @@ class RepresentationBundle:
     analysis_context: AnalysisContext
     envelope: np.ndarray | None = None
     spectral: BatchSpectralResult | None = None
+    spectral_priors: SpectralPriors | None = None
+
+    def __post_init__(self) -> None:
+        """Auto-compute spectral priors from signal length if needed."""
+        if self.spectral_priors is None and self.signals.ndim == 2:
+            m = self.signals.shape[1]
+            object.__setattr__(
+                self,
+                "spectral_priors",
+                compute_spectral_priors(m, self.analysis_context),
+            )
 
     def to_context_dict(self) -> dict:
         """Build a ``context`` dict suitable for metric ``evaluate`` /
@@ -61,6 +73,9 @@ class RepresentationBundle:
         ctx: dict = {
             "analysis_context": self.analysis_context,
         }
+
+        if self.spectral_priors is not None:
+            ctx["spectral_priors"] = self.spectral_priors
 
         if self.spectral is not None:
             ctx["spectral"] = self.spectral

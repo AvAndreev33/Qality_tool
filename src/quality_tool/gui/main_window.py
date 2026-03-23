@@ -68,6 +68,7 @@ from quality_tool.metrics.baseline.snr import SNR
 from quality_tool.metrics.noise import ALL_NOISE_METRICS
 from quality_tool.metrics.regularity import ALL_REGULARITY_METRICS
 from quality_tool.metrics.envelope import ALL_ENVELOPE_METRICS
+from quality_tool.metrics.spectral import ALL_SPECTRAL_METRICS
 from quality_tool.metrics.registry import MetricRegistry
 from quality_tool.preprocessing.basic import (
     detrend_linear,
@@ -82,6 +83,8 @@ from quality_tool.metrics.base import (
     resolve_score_scale,
 )
 from quality_tool.spectral.fft import compute_spectrum, find_carrier_band
+from quality_tool.spectral.priors import compute_spectral_priors
+from quality_tool.core.analysis_context import build_analysis_context
 
 # Number of discrete steps the threshold slider is divided into.
 _SLIDER_STEPS = 1000
@@ -102,6 +105,9 @@ def _build_default_registry() -> MetricRegistry:
         registry.register(m)
     # Envelope metrics.
     for m in ALL_ENVELOPE_METRICS:
+        registry.register(m)
+    # Spectral metrics.
+    for m in ALL_SPECTRAL_METRICS:
         registry.register(m)
     return registry
 
@@ -796,10 +802,14 @@ class MainWindow(QMainWindow):
             band_info = find_carrier_band(
                 spectral.frequencies, spectral.amplitude,
             )
+            expected_band_info = self._compute_expected_band_info(
+                len(processed), spectral.frequencies,
+            )
             self._signal_inspector.update_spectrum(
                 spectral.frequencies, spectral.amplitude,
                 title=f"{title} — processed spectrum",
                 band_info=band_info,
+                expected_band_info=expected_band_info,
             )
 
         else:
@@ -880,6 +890,31 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         return processed
+
+    def _compute_expected_band_info(
+        self,
+        signal_length: int,
+        frequencies: np.ndarray,
+    ) -> tuple[float, float, float] | None:
+        """Compute expected band info from metadata for spectrum display.
+
+        Returns ``(expected_carrier_freq, band_low_freq, band_high_freq)``
+        or ``None`` if no dataset is loaded.
+        """
+        if self._signal_set is None:
+            return None
+        try:
+            ctx = build_analysis_context(self._signal_set)
+            priors = compute_spectral_priors(signal_length, ctx)
+            f = len(frequencies)
+            if priors.expected_carrier_bin >= f:
+                return None
+            carrier_freq = float(frequencies[priors.expected_carrier_bin])
+            lo_bin = min(priors.expected_band_low_bin, f - 1)
+            hi_bin = min(priors.expected_band_high_bin, f - 1)
+            return (carrier_freq, float(frequencies[lo_bin]), float(frequencies[hi_bin]))
+        except Exception:
+            return None
 
     def _get_segment_size(self) -> int | None:
         """Return segment_size if ROI is enabled, else None."""
