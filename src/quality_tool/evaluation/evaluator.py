@@ -46,7 +46,11 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from quality_tool.core.analysis_context import AnalysisContext, default_analysis_context
+from quality_tool.core.analysis_context import (
+    AnalysisContext,
+    build_analysis_context,
+    default_analysis_context,
+)
 from quality_tool.core.models import MetricMapResult, MetricResult, SignalSet
 from quality_tool.envelope.analytic import AnalyticEnvelopeMethod
 from quality_tool.envelope.base import BaseEnvelopeMethod
@@ -173,7 +177,7 @@ def evaluate_metric_maps(
         Mapping from metric name to result.
     """
     if analysis_context is None:
-        analysis_context = default_analysis_context()
+        analysis_context = build_analysis_context(signal_set)
 
     plan = build_plan(
         metrics,
@@ -386,7 +390,13 @@ def _build_bundle(
     chunk_n: int,
     analysis_context: AnalysisContext,
 ) -> RepresentationBundle:
-    """Build a RepresentationBundle for one chunk."""
+    """Build a RepresentationBundle for one chunk.
+
+    Envelope and spectral representations are computed at most once
+    per recipe group per chunk.  All metrics in the group consume
+    these shared representations via the bundle — no metric should
+    recompute them locally.
+    """
 
     # --- Envelope (once per recipe group if needed) ---
     chunk_envelopes: np.ndarray | None = None

@@ -73,7 +73,10 @@
       "Bash(python -m pytest tests/test_metrics/test_envelope_metrics.py -v)",
       "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v)",
       "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v --tb=short -k \"FAILED or sidelobe_no or single_peakness_double or secondary_peaks_gaussian or no_secondary\")",
-      "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v -k \"dialog or registry\")"
+      "Bash(py -m pytest tests/test_metrics/test_envelope_metrics.py -v -k \"dialog or registry\")",
+      "Bash(python -m pytest tests/test_core/test_analysis_context.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_core/test_analysis_context.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_evaluation/test_evaluator_bundles.py -v)"
     ]
   }
 }

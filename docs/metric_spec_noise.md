@@ -160,57 +160,6 @@ Input signal: x_d[n] = prepared signal.
 ---
 
 ## Name
-`noise_floor_level`
-
-## Mathematical definition
-```text
-Input signal: x_d[n] = prepared signal.
-
-1. Apply Hann window:
-   x_w[n] = x_d[n] * w[n]
-
-2. Compute one-sided power spectrum:
-   X[k] = rFFT(x_w[n])
-   P[k] = |X[k]|^2
-   Exclude DC.
-
-3. Find dominant carrier bin:
-   k_c = argmax_k P[k]
-
-4. Define carrier band:
-   B = {k : |k - k_c| <= Δk}
-
-5. Robust out-of-band floor estimate:
-   floor = median_{k not in B} P[k]
-
-6. Robust in-band reference:
-   ref = median_{k in B} P[k]
-
-7. Score:
-   NFL = floor / (ref + ε)
-```
-
-## Signal recipe
-`roi_mean_subtracted_linear_detrended`
-
-## Recipe binding
-`fixed`
-
-## Required representations
-`spectrum_power`
-
-## Score meaning
-`lower is better`
-
-## Notes
-- Use Hann window before FFT.
-- `Δk = analysis_context.band_half_width_bins`
-- `ε = analysis_context.epsilon`
-- Metric should return `valid=False` if either the in-band or out-of-band set is empty.
-
----
-
-## Name
 `residual_noise_energy`
 
 ## Mathematical definition

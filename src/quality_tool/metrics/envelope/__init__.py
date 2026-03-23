@@ -12,9 +12,6 @@ from quality_tool.metrics.envelope.envelope_width import EnvelopeWidth
 from quality_tool.metrics.envelope.main_peak_to_sidelobe_ratio import (
     MainPeakToSidelobeRatio,
 )
-from quality_tool.metrics.envelope.num_significant_secondary_peaks import (
-    NumSignificantSecondaryPeaks,
-)
 from quality_tool.metrics.envelope.single_peakness import SinglePeakness
 from quality_tool.metrics.registry import default_registry
 
@@ -26,7 +23,6 @@ ALL_ENVELOPE_METRICS = [
     EnvelopeSymmetry(),
     SinglePeakness(),
     MainPeakToSidelobeRatio(),
-    NumSignificantSecondaryPeaks(),
 ]
 
 for _m in ALL_ENVELOPE_METRICS:

@@ -21,9 +21,6 @@ from quality_tool.metrics.envelope.single_peakness import SinglePeakness
 from quality_tool.metrics.envelope.main_peak_to_sidelobe_ratio import (
     MainPeakToSidelobeRatio,
 )
-from quality_tool.metrics.envelope.num_significant_secondary_peaks import (
-    NumSignificantSecondaryPeaks,
-)
 from quality_tool.metrics.envelope._envelope_helpers import (
     detect_secondary_peaks,
     half_max_crossings_batch,
@@ -76,7 +73,6 @@ _ALL_METRICS = [
     EnvelopeSymmetry(),
     SinglePeakness(),
     MainPeakToSidelobeRatio(),
-    NumSignificantSecondaryPeaks(),
 ]
 
 
@@ -204,16 +200,6 @@ def test_main_peak_sidelobe_no_sidelobes():
     assert r.score > 100.0  # essentially no sidelobes
 
 
-def test_num_secondary_peaks_gaussian():
-    """A clean Gaussian should have 0 significant secondary peaks."""
-    env = _gaussian_envelope()
-    r = NumSignificantSecondaryPeaks().evaluate(
-        np.zeros(_M), envelope=env, context=_make_context(),
-    )
-    assert r.valid is True
-    assert r.score == 0.0
-
-
 # ---- double-peak tests ----
 
 
@@ -240,19 +226,6 @@ def test_main_peak_sidelobe_double_peak():
     )
     assert r.valid is True
     assert r.score < 100.0  # secondary peak is visible
-
-
-def test_num_secondary_peaks_double_peak():
-    """A double-peak envelope should report at least 1 secondary peak."""
-    env = _double_peak_envelope()
-    m = len(env)
-    # Use alpha=0.4 so the 0.3-height secondary peak falls outside support.
-    ctx = _make_context(AnalysisContext(alpha_main_support=0.4))
-    r = NumSignificantSecondaryPeaks().evaluate(
-        np.zeros(m), envelope=env, context=ctx,
-    )
-    assert r.valid is True
-    assert r.score >= 1.0
 
 
 # ---- asymmetric envelope test ----
@@ -381,23 +354,6 @@ def test_alpha_affects_single_peakness():
     assert r_wide.score >= r_narrow.score
 
 
-def test_beta_affects_secondary_count():
-    """A higher beta threshold should count fewer secondary peaks."""
-    env = _double_peak_envelope()
-    sig = np.zeros(len(env))
-
-    r_low = NumSignificantSecondaryPeaks().evaluate(
-        sig, envelope=env,
-        context=_make_context(AnalysisContext(beta_secondary_peak=0.05)),
-    )
-    r_high = NumSignificantSecondaryPeaks().evaluate(
-        sig, envelope=env,
-        context=_make_context(AnalysisContext(beta_secondary_peak=0.5)),
-    )
-    assert r_low.valid and r_high.valid
-    assert r_high.score <= r_low.score
-
-
 # ---- GUI grouping test ----
 
 
@@ -413,9 +369,8 @@ def test_envelope_metrics_registered_in_default_registry():
     groups = dict(registry.list_grouped())
     assert "envelope" in groups
     names = [name for name, _ in groups["envelope"]]
-    assert len(names) == 8
+    assert len(names) == 7
     assert "envelope_height" in names
-    assert "num_significant_secondary_peaks" in names
 
 
 def test_metrics_dialog_shows_envelope_label():

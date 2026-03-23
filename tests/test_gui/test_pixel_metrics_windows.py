@@ -27,7 +27,6 @@ class TestScoreSemantics:
         from quality_tool.metrics.noise.envelope_peak_to_background_ratio import (
             EnvelopePeakToBackgroundRatio,
         )
-        from quality_tool.metrics.noise.noise_floor_level import NoiseFloorLevel
         from quality_tool.metrics.noise.residual_noise_energy import ResidualNoiseEnergy
         from quality_tool.metrics.noise.high_frequency_noise_level import HighFrequencyNoiseLevel
         from quality_tool.metrics.noise.low_frequency_drift_level import LowFrequencyDriftLevel
@@ -39,7 +38,6 @@ class TestScoreSemantics:
             SpectralSNR(),
             LocalSNR(),
             EnvelopePeakToBackgroundRatio(),
-            NoiseFloorLevel(),
             ResidualNoiseEnergy(),
             HighFrequencyNoiseLevel(),
             LowFrequencyDriftLevel(),
@@ -72,7 +70,6 @@ class TestScoreSemantics:
     def test_lower_better_metrics_are_correct(self, all_metrics):
         lower = {m.name for m in all_metrics if resolve_score_direction(m) == "lower_better"}
         expected_lower = {
-            "noise_floor_level",
             "residual_noise_energy",
             "high_frequency_noise_level",
             "low_frequency_drift_level",

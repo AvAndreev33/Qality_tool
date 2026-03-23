@@ -26,12 +26,13 @@ from quality_tool.spectral.fft import SpectralResult
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_signal_set(h=2, w=3, m=32):
+def _make_signal_set(h=2, w=3, m=32, metadata=None):
     rng = np.random.default_rng(42)
     signals = 10.0 + rng.standard_normal((h, w, m)).clip(-5, 5)
     z_axis = np.arange(m, dtype=float)
     return SignalSet(
         signals=signals, width=w, height=h, z_axis=z_axis, source_type="test",
+        metadata=metadata,
     )
 
 
@@ -265,3 +266,66 @@ class TestBackwardCompatibility:
         ss = _make_signal_set(h=2, w=2, m=64)
         result = evaluate_metric_map(ss, SNR(), active_recipe=_BASELINE)
         assert result.score_map.shape == (2, 2)
+
+
+# ---------------------------------------------------------------------------
+# Tests — metadata-aware context resolution in evaluator
+# ---------------------------------------------------------------------------
+
+class TestMetadataAwareContext:
+    def test_oversampling_resolved_automatically(self):
+        """Evaluator builds context with oversampling scaling when no
+        explicit analysis_context is provided."""
+        ss = _make_signal_set(h=1, w=1, m=16, metadata={
+            "oversampling_factor": 2,
+        })
+        metric = _ContextRecordingMetric()
+        evaluate_metric_map(ss, metric)
+        ctx = metric.recorded_contexts[0]["analysis_context"]
+        assert ctx.band_half_width_bins == 10
+        assert ctx.default_segment_size == 256
+        assert ctx.expected_period_samples == 8
+
+    def test_no_metadata_gives_base_defaults(self):
+        """Without metadata the evaluator uses base defaults."""
+        ss = _make_signal_set(h=1, w=1, m=16, metadata=None)
+        metric = _ContextRecordingMetric()
+        evaluate_metric_map(ss, metric)
+        ctx = metric.recorded_contexts[0]["analysis_context"]
+        assert ctx.band_half_width_bins == 5
+        assert ctx.default_segment_size == 128
+        assert ctx.expected_period_samples == 4
+
+    def test_explicit_context_overrides_builder(self):
+        """An explicitly passed analysis_context takes precedence."""
+        ss = _make_signal_set(h=1, w=1, m=16, metadata={
+            "oversampling_factor": 2,
+        })
+        explicit = AnalysisContext(band_half_width_bins=99)
+        metric = _ContextRecordingMetric()
+        evaluate_metric_map(ss, metric, analysis_context=explicit)
+        ctx = metric.recorded_contexts[0]["analysis_context"]
+        assert ctx.band_half_width_bins == 99
+
+    def test_wavelength_propagated_to_metrics(self):
+        ss = _make_signal_set(h=1, w=1, m=16, metadata={
+            "wavelength_nm": 550.0,
+        })
+        metric = _ContextRecordingMetric()
+        evaluate_metric_map(ss, metric)
+        ctx = metric.recorded_contexts[0]["analysis_context"]
+        assert ctx.wavelength_nm == 550.0
+
+    def test_two_metrics_same_recipe_share_resolved_context(self):
+        """Both metrics in the same group receive the same resolved
+        context object."""
+        ss = _make_signal_set(h=1, w=2, m=16, metadata={
+            "oversampling_factor": 3,
+        })
+        m1 = _ContextRecordingMetric(name="a")
+        m2 = _ContextRecordingMetric(name="b")
+        evaluate_metric_maps(ss, [m1, m2])
+        ctx1 = m1.recorded_contexts[0]["analysis_context"]
+        ctx2 = m2.recorded_contexts[0]["analysis_context"]
+        assert ctx1 is ctx2
+        assert ctx1.expected_period_samples == 12

@@ -16,7 +16,6 @@ from quality_tool.metrics.noise.local_snr import LocalSNR
 from quality_tool.metrics.noise.envelope_peak_to_background_ratio import (
     EnvelopePeakToBackgroundRatio,
 )
-from quality_tool.metrics.noise.noise_floor_level import NoiseFloorLevel
 from quality_tool.metrics.noise.residual_noise_energy import ResidualNoiseEnergy
 from quality_tool.metrics.noise.high_frequency_noise_level import (
     HighFrequencyNoiseLevel,
@@ -58,7 +57,6 @@ _ALL_METRICS = [
     SpectralSNR(),
     LocalSNR(),
     EnvelopePeakToBackgroundRatio(),
-    NoiseFloorLevel(),
     ResidualNoiseEnergy(),
     HighFrequencyNoiseLevel(),
     LowFrequencyDriftLevel(),
@@ -183,32 +181,6 @@ class TestEnvelopePBR:
                 np.testing.assert_allclose(batch.scores[i], scalar.score, rtol=1e-10)
             else:
                 assert not batch.valid[i]
-
-
-# ---- NoiseFloorLevel ----
-
-class TestNoiseFloorLevel:
-    metric = NoiseFloorLevel()
-
-    def test_clean_signal_low_floor(self):
-        sig = _clean_sinusoid()
-        r = self.metric.evaluate(sig, context=_make_context())
-        assert r.valid
-        assert r.score < 1.0  # floor should be below carrier
-
-    def test_noisy_signal_higher_floor(self):
-        clean_r = self.metric.evaluate(_clean_sinusoid(), context=_make_context())
-        noisy_r = self.metric.evaluate(_noisy_sinusoid(noise_std=1.0),
-                                       context=_make_context())
-        assert noisy_r.score > clean_r.score
-
-    def test_batch_scalar_consistency(self):
-        sigs = np.array([_clean_sinusoid(), _noisy_sinusoid()])
-        ctx = _make_context()
-        batch = self.metric.evaluate_batch(sigs, context=ctx)
-        for i in range(2):
-            scalar = self.metric.evaluate(sigs[i], context=ctx)
-            np.testing.assert_allclose(batch.scores[i], scalar.score, rtol=1e-10)
 
 
 # ---- ResidualNoiseEnergy ----
