@@ -2,244 +2,320 @@
 
 ## Iteration name
 
-Metric cleanup + normalized map view + canonical processed signal + autocorrelation inspection
+GUI visual polish — modern minimal styling and UX refinement
 
 ## Goal
 
-Refine the current analysis and inspection workflow before the next metric batches.
+Refine the current GUI so that it looks clean, modern, and intentional while preserving the existing workflow and backend behavior.
 
 This iteration should:
-- remove three spectral metrics that are no longer wanted,
-- add a `normalized_score` map-view mode,
-- add two new signal-inspector modes:
-  - `Canonical processed`
-  - `Autocorrelation`
-- keep the current existing signal-display modes intact,
-- make the envelope overlay cleaner and independent from whether an envelope happened to be computed during metric evaluation.
+- improve the visual design of the current Qt GUI
+- make the interface feel more polished and coherent
+- keep the layout simple and engineering-oriented
+- avoid flashy or bloated UI
+- preserve the current functionality and workflow
 
-This is a semantic/inspection refinement iteration.
-It should improve clarity and usability without redesigning the GUI.
+The goal is not a redesign of product behavior.
+The goal is to turn the current functional GUI into a cleaner and more professional-looking engineering desktop app.
 
 ---
 
 ## Why this iteration matters
 
 The project already has:
-- multiple implemented metric groups,
-- normalized comparison scores,
-- grouped metric selection in the GUI,
-- signal inspection modes,
-- processed-spectrum visualization,
-- metric comparison windows.
+- a strong backend
+- multiple implemented metric groups
+- a usable GUI with map viewer, signal inspector, thresholding, comparison, histogram, and grouped metric selection
 
-Before adding more functionality, it is useful to:
-- simplify the metric set slightly,
-- make map viewing more comparison-friendly,
-- expose autocorrelation directly in the signal inspector,
-- clarify what "processed signal" means in inspection mode,
-- decouple envelope viewing from metric-execution side effects.
+Functionally, the tool is already useful.
 
-This makes the tool cleaner and more interpretable for further development.
+The next improvement is visual and ergonomic:
+- better spacing
+- better visual hierarchy
+- cleaner controls
+- more intentional panel styling
+- more readable status and labels
+- more coherent modern desktop-app appearance
+
+This should make the tool more pleasant to use without changing its core logic.
 
 ---
 
 ## In scope
 
-### Metric cleanup
+### Visual benchmark research
 
-Remove the following metrics from the implemented metric set:
-
-- `low_frequency_trend_energy_fraction`
-- `harmonic_distortion_level`
-- `spectral_correlation_score`
-
-This removal should be reflected consistently in:
-- metric registration,
-- GUI metric selection,
-- tests,
-- any metric-group presentation logic,
-- any supporting documentation/spec usage that depends on the currently implemented set.
-
-Do not leave dead registration or GUI entries behind.
-
----
-
-### Map view mode: `normalized_score`
-
-Extend the current map-view mode selector so that it can show:
-
-- `score`
-- `normalized_score`
-- `masked`
-- `mask_only`
+Before editing the GUI, review a small set of modern minimal desktop UI references suitable for:
+- scientific tools
+- engineering tools
+- data-inspection tools
+- dark-theme desktop applications
+- clean Qt-style applications
 
 Requirements:
-- `normalized_score` must use the already implemented normalization/comparison layer
-- native metric score maps must remain preserved
-- switching to `normalized_score` must only change visualization
-- thresholding semantics must remain based on native metric scores, not normalized scores
-- switching back to `score` must restore the original map view
+- do lightweight visual research
+- gather a few simple reference directions
+- prefer minimal, technical, uncluttered interfaces
+- do not copy any one design literally
+- synthesize a clean style direction appropriate for this project
 
-This must be a clean display-layer feature, not a change to metric computation.
+The result should be:
+- a short visual direction summary before implementation
+- then one coherent style applied to the app
 
----
-
-### Signal inspector — preserve current modes, add new ones
-
-Do **not** remove existing signal-inspector modes that already exist in the implementation.
-
-For this iteration:
-- preserve the current modes already implemented,
-- add the following new modes:
-
-#### `Canonical processed`
-This mode should show the canonical processed signal:
-
-`roi_mean_subtracted_linear_detrended`
-
-This should be treated as the standard backend-side canonical processed representation used by many metrics.
-
-Important:
-- this does **not** replace the existing processing/settings-based processed mode
-- both should remain available
-- the new mode is an additional explicit signal-inspection mode
-
-#### `Autocorrelation`
-This mode should display the normalized autocorrelation of the currently selected pixel signal.
-
-The autocorrelation should be computed from the relevant currently displayed signal mode where appropriate, using clear and consistent logic.
+Keep the visual direction practical, not trendy for the sake of trendiness.
 
 ---
 
-### Autocorrelation expected-period visualization
+### Preserve the current layout and workflow
 
-In the new `Autocorrelation` mode, visualize expected-period guidance from `AnalysisContext`.
-
-Requirements:
-- show the normalized autocorrelation curve
-- show the expected period location
-- show the expected lag search interval/window around that period
-- if practical, also show the detected dominant autocorrelation peak in that interval
-
-The purpose is to make regularity-related behavior visually interpretable, similarly to how the useful band is shown in the spectral view.
-
-Keep this simple and readable.
-
----
-
-### Envelope overlay cleanup
-
-Refine envelope-overlay behavior in the signal inspector.
-
-New intended behavior:
-- envelope overlay should be computed from the signal currently being displayed in the signal viewer
-- it should not depend on whether an envelope happened to be computed earlier for some metric
-- it should behave as a viewer-side inspection tool, not as a side effect of metric execution
-
-Requirements:
-- envelope overlay should work where it is meaningful
-- if a displayed mode is not suitable for envelope overlay, the control should be disabled or ignored cleanly
-- no hidden dependency on metric bundle state should remain
-
-This change should make signal inspection cleaner and more predictable.
-
----
-
-### Preserve existing workflow
-
-The following behavior must remain stable:
+The current workflow must remain intact:
 - dataset loading
-- metric computation
-- grouped metric selection
-- thresholding
+- metric selection
+- grouped metric dialog
+- map view
+- signal inspection
+- threshold controls
 - histogram windows
-- per-pixel metric inspector
-- processed-spectrum visualization
-- current signal display modes already present in the implementation
+- comparison windows
+- pixel inspection windows
+- normalized score / masking modes
 
-This iteration should add/refine inspection behavior, not destabilize the existing workflow.
+This iteration is not about changing what the GUI does.
+It is about improving how it looks and feels.
+
+---
+
+### Main window styling
+
+Refine the main window so it feels more structured and polished.
+
+Focus areas:
+- spacing and margins
+- section alignment
+- visual hierarchy
+- panel balance
+- typography hierarchy
+- button consistency
+- cleaner toolbar presentation
+- cleaner tool-panel presentation
+
+The window should look intentional and professionally assembled, not like a default raw Qt app.
+
+---
+
+### Map section polish
+
+Refine the visual presentation of the map section.
+
+Possible areas:
+- cleaner framing of the map viewer
+- cleaner visual relationship between map viewer and map tools panel
+- improved labels / titles where useful
+- more polished control grouping
+- more coherent spacing for controls around the viewer
+
+Do not overload the map section with decoration.
+
+---
+
+### Signal section polish
+
+Refine the signal section so it looks as intentional as the map section.
+
+Possible areas:
+- cleaner visual framing of the signal plot
+- cleaner signal-tools panel styling
+- better grouping of controls
+- more readable labels and toggles
+- more coherent balance between plot and tools
+
+Keep this technical and minimal.
+
+---
+
+### Control styling consistency
+
+Make controls visually consistent across the application.
+
+Focus on consistency for:
+- push buttons
+- combo boxes
+- check boxes
+- section labels
+- dialogs
+- status indicators
+- table windows
+- chart windows
+
+The GUI should feel like one application, not a set of separately built widgets.
+
+---
+
+### Dialog and window polish
+
+Refine the look of secondary windows and dialogs, including where applicable:
+- metric selection dialog
+- info dialog
+- histogram windows
+- per-pixel metric table window
+- per-pixel metric chart window
+- compare windows
+- 3D map window
+
+Requirements:
+- keep them visually consistent with the main window
+- preserve their current functionality
+- improve readability and modern desktop feel
+
+---
+
+### Styling approach
+
+Use a clean Qt-appropriate styling approach.
+
+Possible acceptable methods:
+- improved widget layout and spacing
+- Qt stylesheet cleanup
+- palette refinement
+- small icon / label polish if already available or trivial to add
+- lightweight reusable style helpers if needed
+
+Do not build a large custom theming framework.
+Do not introduce a large dependency just for cosmetics unless already natural and minimal.
+
+---
+
+### Status/readability polish
+
+Improve the readability of current state information.
+
+Possible areas:
+- status bar clarity
+- active mode labels
+- current metric/map visibility
+- clearer group labels
+- clearer visual distinction between primary and secondary actions
+
+Keep it subtle and useful.
+
+---
+
+### Metric grouping dialog polish
+
+The metric-selection dialog already supports grouped metrics.
+
+Improve its presentation so that:
+- groups are clearer visually
+- spacing is better
+- labels are easier to scan
+- the dialog feels modern and organized
+
+Do not redesign the selection logic.
+Only improve presentation and clarity.
+
+---
+
+### Minimalism requirement
+
+This iteration must stay minimal.
+
+Do:
+- clean
+- structured
+- modern
+- technical
+- readable
+
+Do not:
+- add flashy gradients everywhere
+- add decorative clutter
+- make it look like a consumer app
+- introduce unnecessary animation
+- replace clarity with visual effects
+
+The target style is:
+**simple, modern, minimal engineering desktop software**
 
 ---
 
 ## Out of scope
 
 Do not implement in this iteration:
-- zoom/pan/reset for map viewer
-- 3D map plotting
-- new metric groups
-- thresholding redesign
-- normalization redesign
-- CUDA backend
-- major GUI layout changes
+- backend changes
+- new metric logic
+- new analysis features
+- workflow redesign
+- new data-processing controls
+- large animation systems
+- major layout rearchitecture
+- web-style UI overhaul
+- unrelated feature additions
 
-These belong to later iterations.
+This iteration is visual polish and ergonomic refinement only.
 
 ---
 
 ## File targets
 
-Expected modules to update:
+Expected modules to update may include:
 
 - `src/quality_tool/gui/main_window.py`
+- `src/quality_tool/gui/widgets/map_viewer.py`
 - `src/quality_tool/gui/widgets/signal_inspector.py`
 - `src/quality_tool/gui/dialogs/metrics_dialog.py`
-- metric registration modules
-- normalization/view-handling code if needed
+- `src/quality_tool/gui/dialogs/info_dialog.py`
+- `src/quality_tool/gui/windows/*.py`
 
-Metric modules/tests for the removed metrics may also need cleanup.
-
-Only modify other files if truly necessary.
+A small shared GUI styling helper/module may be added if useful, but keep it minimal.
 
 ---
 
 ## Testing expectations
 
-Add targeted tests for:
-- removal of the three metrics from registration / GUI availability
-- `normalized_score` view-mode behavior
-- preservation of native score maps when normalized view is selected
-- addition of `Canonical processed` mode
-- addition of `Autocorrelation` mode
-- expected-period / expected-window visualization data generation for autocorrelation
-- envelope overlay behavior based on the currently displayed signal
-- no regression of existing signal modes and current GUI workflow
+Automated tests do not need to prove aesthetics.
 
-Keep tests focused and reliable.
+Add or update tests only where needed to ensure:
+- no regression of existing window creation
+- no regression of current controls and workflow
+- no breakage from renamed/restructured GUI code
+
+The priority is preserving behavior while improving appearance.
 
 ---
 
 ## Implementation preferences
 
-- keep the GUI thin and backend-driven
-- preserve existing implemented signal modes
-- add new signal modes without removing current ones
-- keep normalized-score view as a pure display-layer feature
-- keep thresholding tied to native scores
-- keep envelope overlay viewer-side and explicit
-- keep autocorrelation visualization simple and readable
-- avoid unrelated cleanup outside this iteration
+- keep functionality unchanged
+- improve visual hierarchy
+- improve spacing and consistency
+- prefer clean dark-theme engineering aesthetics
+- use lightweight reference research before implementation
+- synthesize a coherent style instead of copying one example
+- avoid overengineering theming
+- keep the GUI technical and minimal
 
 ---
 
 ## Definition of done
 
 This iteration is complete when:
-- the three specified spectral metrics are removed cleanly
-- `normalized_score` is available as a map-view mode
-- existing signal-inspector modes remain intact
-- `Canonical processed` mode is added
-- `Autocorrelation` mode is added
-- expected-period guidance is shown in autocorrelation view
-- envelope overlay is computed from the currently displayed signal instead of relying on prior metric execution state
-- the current GUI workflow remains stable
+- the GUI looks noticeably cleaner and more modern
+- the current workflow remains unchanged
+- windows and dialogs feel visually consistent
+- map and signal sections are better balanced and presented
+- grouped metric selection looks cleaner
+- controls look more coherent across the app
+- the result feels like a polished engineering desktop tool rather than a default raw Qt interface
 
 ---
 
 ## Expected assistant workflow
 
 1. read `CLAUDE.md` and the docs
-2. summarize the intended cleanup/inspection refinement
-3. propose a short implementation plan
-4. implement only this iteration
-5. add targeted tests
-6. summarize created files, modified files, and any limitations
+2. inspect the current GUI code and current app appearance
+3. do lightweight visual benchmark research
+4. summarize the chosen visual direction
+5. implement only this visual-polish iteration
+6. verify current behavior still works
+7. summarize what was visually improved and any remaining limitations

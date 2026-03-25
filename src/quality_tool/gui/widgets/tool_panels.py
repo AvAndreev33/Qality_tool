@@ -38,6 +38,8 @@ class MapToolsPanel(QWidget):
     slider_moved = Signal(int)
     spin_changed = Signal(float)
     mask_source_changed = Signal(str)
+    reset_view_clicked = Signal()
+    show_3d_clicked = Signal()
 
     def __init__(self, slider_steps: int = 1000, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -75,6 +77,20 @@ class MapToolsPanel(QWidget):
         group_layout.addWidget(self.btn_reset)
 
         layout.addWidget(group)
+
+        # --- View group ---
+        view_group = QGroupBox("View")
+        view_layout = QVBoxLayout(view_group)
+
+        self.btn_reset_view = QPushButton("Reset view")
+        self.btn_reset_view.clicked.connect(self.reset_view_clicked)
+        view_layout.addWidget(self.btn_reset_view)
+
+        self.btn_show_3d = QPushButton("Show 3D map")
+        self.btn_show_3d.clicked.connect(self.show_3d_clicked)
+        view_layout.addWidget(self.btn_show_3d)
+
+        layout.addWidget(view_group)
         layout.addStretch()
 
 

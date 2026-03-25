@@ -19,7 +19,7 @@ Layout:
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtCore import QCoreApplication, QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -57,6 +57,7 @@ from quality_tool.comparison.normalization import (
 )
 from quality_tool.gui.windows.compare_window import CompareWindow
 from quality_tool.gui.windows.histogram_window import HistogramWindow
+from quality_tool.gui.windows.map_3d_window import Map3DWindow
 from quality_tool.gui.windows.pixel_metrics_chart_window import (
     PixelMetricsChartWindow,
 )
@@ -70,6 +71,8 @@ from quality_tool.metrics.noise import ALL_NOISE_METRICS
 from quality_tool.metrics.regularity import ALL_REGULARITY_METRICS
 from quality_tool.metrics.envelope import ALL_ENVELOPE_METRICS
 from quality_tool.metrics.spectral import ALL_SPECTRAL_METRICS
+from quality_tool.metrics.phase import ALL_PHASE_METRICS
+from quality_tool.metrics.correlation import ALL_CORRELATION_METRICS
 from quality_tool.metrics.registry import MetricRegistry
 from quality_tool.preprocessing.basic import (
     detrend_linear,
@@ -114,6 +117,12 @@ def _build_default_registry() -> MetricRegistry:
     # Spectral metrics.
     for m in ALL_SPECTRAL_METRICS:
         registry.register(m)
+    # Phase metrics.
+    for m in ALL_PHASE_METRICS:
+        registry.register(m)
+    # Correlation / reference-model metrics.
+    for m in ALL_CORRELATION_METRICS:
+        registry.register(m)
     return registry
 
 
@@ -137,6 +146,28 @@ _DEFAULT_PROCESSING: dict = {
 }
 
 
+class _LoadWorker(QThread):
+    """Background thread for dataset loading."""
+
+    finished = Signal(object)  # emits SignalSet on success
+    failed = Signal(str)       # emits error message on failure
+
+    def __init__(
+        self,
+        load_fn,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._load_fn = load_fn
+
+    def run(self) -> None:
+        try:
+            result = self._load_fn()
+            self.finished.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class MainWindow(QMainWindow):
     """Central application window."""
 
@@ -150,6 +181,7 @@ class MainWindow(QMainWindow):
         self._envelope_registry = _build_envelope_registry()
 
         # ----- session state ---------------------------------------------
+        self._load_worker: _LoadWorker | None = None
         self._signal_set: SignalSet | None = None
         self._selected_metrics: list[str] = []
         self._computed_results: dict[str, MetricMapResult] = {}
@@ -158,6 +190,7 @@ class MainWindow(QMainWindow):
         self._compare_windows: list[CompareWindow] = []
         self._histogram_windows: list[HistogramWindow] = []
         self._pixel_metric_windows: list[QWidget] = []
+        self._3d_windows: list[Map3DWindow] = []
 
         # Mask-source metric: which metric's score map drives the threshold.
         self._mask_source_metric: str | None = None
@@ -221,6 +254,10 @@ class MainWindow(QMainWindow):
         self._map_tools.mask_source_changed.connect(
             self._on_mask_source_changed,
         )
+        self._map_tools.reset_view_clicked.connect(
+            self._map_viewer.reset_view,
+        )
+        self._map_tools.show_3d_clicked.connect(self._on_show_3d)
         self._signal_tools.display_mode_changed.connect(
             self._on_signal_display_mode_changed,
         )
@@ -241,9 +278,9 @@ class MainWindow(QMainWindow):
         self.addToolBar(tb)
 
         # Load
-        btn_load = QPushButton("Load")
-        btn_load.clicked.connect(self._on_load)
-        tb.addWidget(btn_load)
+        self._btn_load = QPushButton("Load")
+        self._btn_load.clicked.connect(self._on_load)
+        tb.addWidget(self._btn_load)
 
         tb.addSeparator()
 
@@ -308,12 +345,23 @@ class MainWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        try:
-            signal_set = dlg.load()
-        except Exception as exc:
-            QMessageBox.critical(self, "Load error", str(exc))
-            self._status.showMessage("Load failed")
-            return
+        # Snapshot all widget values in the main thread so that the
+        # background worker never touches Qt widgets.
+        load_fn = dlg.make_load_fn()
+
+        self._btn_load.setEnabled(False)
+        self._status.showMessage("Loading dataset…")
+
+        worker = _LoadWorker(load_fn, parent=self)
+        worker.finished.connect(self._on_load_finished)
+        worker.failed.connect(self._on_load_failed)
+        self._load_worker = worker
+        worker.start()
+
+    def _on_load_finished(self, signal_set: SignalSet) -> None:
+        """Handle successful background load."""
+        self._load_worker = None
+        self._btn_load.setEnabled(True)
 
         self._signal_set = signal_set
         self._clear_session()
@@ -327,6 +375,13 @@ class MainWindow(QMainWindow):
             f"({h} x {w} x {m})  "
             f"z_axis={'file' if signal_set.z_axis_path else 'index'}"
         )
+
+    def _on_load_failed(self, error_msg: str) -> None:
+        """Handle failed background load."""
+        self._load_worker = None
+        self._btn_load.setEnabled(True)
+        QMessageBox.critical(self, "Load error", error_msg)
+        self._status.showMessage("Load failed")
 
     def _on_metrics_dialog(self) -> None:
         """Open the multi-metric selection dialog."""
@@ -605,6 +660,43 @@ class MainWindow(QMainWindow):
         )
         win.show()
         self._histogram_windows.append(win)
+
+    def _on_show_3d(self) -> None:
+        """Open a 3D surface window for the currently displayed map."""
+        name = self._current_map_name
+        if name is None or name not in self._computed_results:
+            self._status.showMessage("No map to show in 3D")
+            return
+
+        mode = self._display_mode
+
+        if mode == "mask_only":
+            self._status.showMessage("3D view is not available for mask_only mode")
+            return
+
+        result = self._computed_results[name]
+        tr = self._current_threshold
+
+        if mode == "normalized_score":
+            metric = self._registry.get(name)
+            direction = resolve_score_direction(metric)
+            scale = resolve_score_scale(metric)
+            data = normalize_score_map(
+                result.score_map, result.valid_map, direction, scale,
+            )
+            title = f"{name} — normalized score (3D)"
+        elif mode == "masked" and tr is not None:
+            data = result.score_map.astype(float).copy()
+            data[~tr.mask] = np.nan
+            source = self._mask_source_metric or name
+            title = f"{name} — masked (source: {source}) (3D)"
+        else:
+            data = result.score_map.copy()
+            title = f"{name} — score map (3D)"
+
+        win = Map3DWindow(data, title=title)
+        win.show()
+        self._3d_windows.append(win)
 
     def _on_info(self) -> None:
         info: dict[str, str] = {}
@@ -1258,20 +1350,28 @@ class _LoadDialog(QDialog):
 
         Must be called after the dialog has been accepted.
         """
+        return self.make_load_fn()()
+
+    def make_load_fn(self):
+        """Snapshot widget values and return a thread-safe callable.
+
+        The returned callable captures only plain Python values and
+        can safely be invoked from a background thread.
+        """
         if not self._selected_path:
             raise ValueError("No path selected")
 
         src = self._type_combo.currentText()
+        path = self._selected_path
+        width = self._width_spin.value()
+        height = self._height_spin.value()
 
-        if src == "image_stack":
-            from quality_tool.io.image_stack_loader import load_image_stack
+        def _load() -> SignalSet:
+            if src == "image_stack":
+                from quality_tool.io.image_stack_loader import load_image_stack
+                return load_image_stack(path)
+            else:
+                from quality_tool.io.txt_matrix_loader import load_txt_matrix
+                return load_txt_matrix(path, width=width, height=height)
 
-            return load_image_stack(self._selected_path)
-        else:
-            from quality_tool.io.txt_matrix_loader import load_txt_matrix
-
-            return load_txt_matrix(
-                self._selected_path,
-                width=self._width_spin.value(),
-                height=self._height_spin.value(),
-            )
+        return _load

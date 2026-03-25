@@ -30,10 +30,12 @@ _CATEGORY_LABELS: dict[str, str] = {
     "regularity": "Regularity metrics",
     "envelope": "Envelope metrics",
     "spectral": "Spectral metrics",
+    "phase": "Phase metrics",
+    "correlation": "Correlation / Reference metrics",
 }
 
 # Categories placed in the right column.
-_RIGHT_COLUMN_CATEGORIES: set[str] = {"envelope", "spectral"}
+_RIGHT_COLUMN_CATEGORIES: set[str] = {"envelope", "spectral", "correlation"}
 
 
 class MetricsDialog(QDialog):

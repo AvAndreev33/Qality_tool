@@ -1,7 +1,7 @@
 """Generic 2D map viewer widget for Quality_tool.
 
 Displays a single (H, W) array with a colorbar and emits pixel coordinates
-when the user clicks on the map.
+when the user clicks on the map.  Supports mouse-wheel zoom and reset-view.
 """
 
 from __future__ import annotations
@@ -11,6 +11,10 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+# Zoom factor per scroll step (< 1 means zoom in).
+_ZOOM_IN_FACTOR = 0.8
+_ZOOM_OUT_FACTOR = 1.25
 
 
 class MapViewer(QWidget):
@@ -36,14 +40,20 @@ class MapViewer(QWidget):
         # Current map data for value look-up.
         self._data: np.ndarray | None = None
 
-        # Selected pixel marker.
+        # Selected pixel marker and its (row, col) position.
         self._marker = None
+        self._selected_rc: tuple[int, int] | None = None
+
+        # Home view limits stored when a new map is set.
+        self._home_xlim: tuple[float, float] | None = None
+        self._home_ylim: tuple[float, float] | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._canvas)
 
         self._canvas.mpl_connect("button_press_event", self._on_click)
+        self._canvas.mpl_connect("scroll_event", self._on_scroll)
 
     # ------------------------------------------------------------------
     # Public API
@@ -71,6 +81,7 @@ class MapViewer(QWidget):
             Optional explicit color range.  When ``None``, matplotlib
             auto-scales to the data range.
         """
+        prev = self._snapshot_view(data)
         self._data = data
         self._remove_colorbar()
         self._ax.clear()
@@ -82,6 +93,8 @@ class MapViewer(QWidget):
         self._colorbar = self._figure.colorbar(self._image, ax=self._ax)
         self._ax.set_title(title)
         self._marker = None
+        self._store_home_limits()
+        self._restore_view(prev)
         self._canvas.draw_idle()
 
     def set_masked_map(
@@ -108,6 +121,7 @@ class MapViewer(QWidget):
         vmin, vmax : float | None
             Color range anchored to the full original score map.
         """
+        prev = self._snapshot_view(data)
         self._data = data  # keep original scores for value_at()
         self._remove_colorbar()
         self._ax.clear()
@@ -130,6 +144,8 @@ class MapViewer(QWidget):
         self._colorbar = self._figure.colorbar(self._image, ax=self._ax)
         self._ax.set_title(title)
         self._marker = None
+        self._store_home_limits()
+        self._restore_view(prev)
         self._canvas.draw_idle()
 
     def set_binary_mask(self, mask: np.ndarray, title: str = "") -> None:
@@ -139,6 +155,7 @@ class MapViewer(QWidget):
         rgb[bool_mask] = [0.2, 0.7, 0.3]
         rgb[~bool_mask] = [0.8, 0.2, 0.2]
 
+        prev = self._snapshot_view(bool_mask)
         self._data = bool_mask
         self._remove_colorbar()
         self._ax.clear()
@@ -146,7 +163,16 @@ class MapViewer(QWidget):
         self._image = self._ax.imshow(rgb, origin="upper", aspect="equal")
         self._ax.set_title(title)
         self._marker = None
+        self._store_home_limits()
+        self._restore_view(prev)
         self._canvas.draw_idle()
+
+    def reset_view(self) -> None:
+        """Restore the map viewer to its default full-map extent."""
+        if self._home_xlim is not None and self._home_ylim is not None:
+            self._ax.set_xlim(self._home_xlim)
+            self._ax.set_ylim(self._home_ylim)
+            self._canvas.draw_idle()
 
     def clear(self) -> None:
         """Clear the viewer."""
@@ -155,6 +181,9 @@ class MapViewer(QWidget):
         self._ax.clear()
         self._image = None
         self._marker = None
+        self._selected_rc = None
+        self._home_xlim = None
+        self._home_ylim = None
         self._canvas.draw_idle()
 
     def get_snapshot(self) -> tuple[np.ndarray | None, str]:
@@ -175,6 +204,41 @@ class MapViewer(QWidget):
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _store_home_limits(self) -> None:
+        """Capture the current axes limits as the home (full-map) view."""
+        self._home_xlim = self._ax.get_xlim()
+        self._home_ylim = self._ax.get_ylim()
+
+    def _snapshot_view(
+        self, new_data: np.ndarray,
+    ) -> dict | None:
+        """Capture current zoom and marker state before a redraw.
+
+        Returns ``None`` when there is nothing to restore (first
+        display or map shape changed).
+        """
+        if self._data is None:
+            return None
+        # Only restore when the new data has the same spatial shape —
+        # a different shape means a completely new dataset.
+        if new_data.shape[:2] != self._data.shape[:2]:
+            return None
+        return {
+            "xlim": self._ax.get_xlim(),
+            "ylim": self._ax.get_ylim(),
+            "pixel": self._selected_rc,
+        }
+
+    def _restore_view(self, prev: dict | None) -> None:
+        """Restore zoom and marker from a previous snapshot."""
+        if prev is None:
+            return
+        self._ax.set_xlim(prev["xlim"])
+        self._ax.set_ylim(prev["ylim"])
+        if prev["pixel"] is not None:
+            row, col = prev["pixel"]
+            self._draw_marker(row, col)
 
     def _remove_colorbar(self) -> None:
         """Safely remove the current colorbar, if any.
@@ -205,8 +269,40 @@ class MapViewer(QWidget):
         self._draw_marker(row, col)
         self.pixel_selected.emit(row, col)
 
+    def _on_scroll(self, event) -> None:
+        """Zoom the map view on mouse-wheel scroll."""
+        if event.inaxes != self._ax or self._data is None:
+            return
+
+        # Determine zoom direction.
+        if event.button == "up":
+            factor = _ZOOM_IN_FACTOR
+        elif event.button == "down":
+            factor = _ZOOM_OUT_FACTOR
+        else:
+            return
+
+        # Current limits.
+        xl, xr = self._ax.get_xlim()
+        yb, yt = self._ax.get_ylim()
+
+        # Cursor position in data coordinates.
+        cx = event.xdata
+        cy = event.ydata
+
+        # Compute new limits centred on cursor.
+        new_xl = cx - (cx - xl) * factor
+        new_xr = cx + (xr - cx) * factor
+        new_yb = cy - (cy - yb) * factor
+        new_yt = cy + (yt - cy) * factor
+
+        self._ax.set_xlim(new_xl, new_xr)
+        self._ax.set_ylim(new_yb, new_yt)
+        self._canvas.draw_idle()
+
     def _draw_marker(self, row: int, col: int) -> None:
         """Draw a crosshair on the selected pixel."""
+        self._selected_rc = (row, col)
         if self._marker is not None:
             self._marker.remove()
         (self._marker,) = self._ax.plot(

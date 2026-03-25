@@ -88,7 +88,11 @@
       "Bash(py -m pytest tests/test_iteration_cleanup.py::TestMetricRemoval tests/test_iteration_cleanup.py::TestNormalizedScoreMapView tests/test_iteration_cleanup.py::TestAutocorrelation tests/test_iteration_cleanup.py::TestCanonicalProcessed tests/test_metrics/test_spectral_metrics.py --tb=short -q)",
       "Bash(echo \"EXIT=$?\")",
       "Bash(py -m pytest tests/test_gui/test_widgets.py tests/test_iteration_cleanup.py::TestSignalInspectorModes tests/test_iteration_cleanup.py::TestEnvelopeOverlayCleanup --tb=short -q)",
-      "Bash(py -m pytest tests/test_iteration_cleanup.py --tb=short -q)"
+      "Bash(py -m pytest tests/test_iteration_cleanup.py --tb=short -q)",
+      "Bash(find C:/Users/avand/PycharmProjects/wli_research_workbench/src/quality_tool/gui -name *metric* -type f)",
+      "Bash(xargs ls:*)",
+      "Bash(python -m pytest tests/test_metrics/test_phase_metrics.py tests/test_metrics/test_correlation_metrics.py tests/test_metrics/test_metric_registration.py -v)",
+      "Bash(py -m pytest tests/test_metrics/test_phase_metrics.py tests/test_metrics/test_correlation_metrics.py tests/test_metrics/test_metric_registration.py -v)"
     ]
   }
 }

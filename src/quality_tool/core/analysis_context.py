@@ -87,6 +87,29 @@ class AnalysisContext:
     coherence_to_bandwidth_scale : float
         Scale factor used when converting coherence-width-in-samples
         to expected spectral band half-width.
+    phase_support_threshold_fraction : float
+        Fraction (α_phase) of envelope peak for phase-support
+        definition.
+    phase_guard_samples : int
+        Samples trimmed from each edge of phase support.
+    phase_weight_power : float
+        Exponent for envelope weighting in phase fits.
+    phase_monotonicity_tolerance_fraction : float
+        Fractional tolerance (τ_mon) for monotonicity inlier test.
+    phase_jump_tolerance_fraction : float
+        Fractional tolerance (τ_jump) for jump detection.
+    minimum_phase_support_samples : int
+        Minimum valid support length for phase metrics.
+    minimum_phase_support_periods : float
+        Minimum apparent carrier periods in phase support.
+    reference_support_threshold_fraction : float
+        Fraction (α_ref) of reference envelope for reference support.
+    reference_carrier_period_nm : float or None
+        Expected carrier period in nm, derived from metadata.
+    reference_envelope_scale_nm : float or None
+        Gaussian 1/e envelope scale in nm, derived from metadata.
+    minimum_reference_support_samples : int
+        Minimum samples in reference support.
     wavelength_nm : float or None
         Source wavelength in nanometres, from metadata.  ``None``
         when metadata is unavailable.
@@ -120,6 +143,21 @@ class AnalysisContext:
     local_spectrum_window_cycles: float = 4.0
     local_spectrum_hop_cycles: float = 2.0
     coherence_to_bandwidth_scale: float = 0.5
+
+    # Phase-metric parameters.
+    phase_support_threshold_fraction: float = 0.1
+    phase_guard_samples: int = 2
+    phase_weight_power: float = 2.0
+    phase_monotonicity_tolerance_fraction: float = 0.5
+    phase_jump_tolerance_fraction: float = 2.0
+    minimum_phase_support_samples: int = 8
+    minimum_phase_support_periods: float = 1.5
+
+    # Correlation / reference-model metric parameters.
+    reference_support_threshold_fraction: float = 0.05
+    reference_carrier_period_nm: float | None = None
+    reference_envelope_scale_nm: float | None = None
+    minimum_reference_support_samples: int = 8
 
     # Metadata-derived fields (None when metadata is unavailable).
     wavelength_nm: float | None = None
@@ -222,10 +260,23 @@ def build_analysis_context(signal_set: SignalSet) -> AnalysisContext:
             except (TypeError, ValueError):
                 pass
 
+    # Derive reference-model constants from metadata when possible.
+    # For normal-incidence WLI the carrier period equals the source
+    # wavelength and the Gaussian 1/e envelope scale is half the
+    # coherence length.
+    ref_carrier: float | None = None
+    ref_envelope: float | None = None
+    if wavelength_nm is not None and wavelength_nm > 0:
+        ref_carrier = wavelength_nm
+    if coherence_length_nm is not None and coherence_length_nm > 0:
+        ref_envelope = coherence_length_nm / 2.0
+
     return AnalysisContext(
         band_half_width_bins=band_half_width_bins,
         default_segment_size=default_segment_size,
         expected_period_samples=expected_period_samples,
+        reference_carrier_period_nm=ref_carrier,
+        reference_envelope_scale_nm=ref_envelope,
         wavelength_nm=wavelength_nm,
         coherence_length_nm=coherence_length_nm,
         z_step_nm=z_step_nm,
