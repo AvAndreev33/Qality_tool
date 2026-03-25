@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSpinBox,
     QSplitter,
@@ -219,14 +220,16 @@ class MainWindow(QMainWindow):
         # Map section: viewer + map tools panel side by side
         map_section = QWidget()
         map_layout = QHBoxLayout(map_section)
-        map_layout.setContentsMargins(0, 0, 0, 0)
+        map_layout.setContentsMargins(4, 4, 4, 0)
+        map_layout.setSpacing(2)
         map_layout.addWidget(self._map_viewer, stretch=1)
         map_layout.addWidget(self._map_tools, stretch=0)
 
         # Signal section: inspector + signal tools panel side by side
         signal_section = QWidget()
         signal_layout = QHBoxLayout(signal_section)
-        signal_layout.setContentsMargins(0, 0, 0, 0)
+        signal_layout.setContentsMargins(4, 0, 4, 4)
+        signal_layout.setSpacing(2)
         signal_layout.addWidget(self._signal_inspector, stretch=1)
         signal_layout.addWidget(self._signal_tools, stretch=0)
 
@@ -243,6 +246,14 @@ class MainWindow(QMainWindow):
         # ----- status bar ------------------------------------------------
         self._status = QStatusBar()
         self.setStatusBar(self._status)
+
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setFixedHeight(14)
+        self._progress_bar.setMaximumWidth(180)
+        self._progress_bar.setTextVisible(False)
+        self._progress_bar.hide()
+        self._status.addPermanentWidget(self._progress_bar)
+
         self._status.showMessage("Ready — load a dataset to begin")
 
         # ----- connections -----------------------------------------------
@@ -304,6 +315,7 @@ class MainWindow(QMainWindow):
         # Map selector — populated from computed results
         tb.addWidget(QLabel(" Map: "))
         self._map_combo = QComboBox()
+        self._map_combo.setMinimumWidth(220)
         self._map_combo.currentTextChanged.connect(self._on_map_switch)
         tb.addWidget(self._map_combo)
 
@@ -351,6 +363,8 @@ class MainWindow(QMainWindow):
 
         self._btn_load.setEnabled(False)
         self._status.showMessage("Loading dataset…")
+        self._progress_bar.setRange(0, 0)  # indeterminate
+        self._progress_bar.show()
 
         worker = _LoadWorker(load_fn, parent=self)
         worker.finished.connect(self._on_load_finished)
@@ -362,6 +376,7 @@ class MainWindow(QMainWindow):
         """Handle successful background load."""
         self._load_worker = None
         self._btn_load.setEnabled(True)
+        self._progress_bar.hide()
 
         self._signal_set = signal_set
         self._clear_session()
@@ -380,6 +395,7 @@ class MainWindow(QMainWindow):
         """Handle failed background load."""
         self._load_worker = None
         self._btn_load.setEnabled(True)
+        self._progress_bar.hide()
         QMessageBox.critical(self, "Load error", error_msg)
         self._status.showMessage("Load failed")
 
@@ -473,6 +489,9 @@ class MainWindow(QMainWindow):
         self._status.showMessage(
             f"Computing {', '.join(names_to_compute)}…"
         )
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.show()
         self._status.repaint()
 
         def _progress(done: int, total: int) -> None:
@@ -480,6 +499,7 @@ class MainWindow(QMainWindow):
             self._status.showMessage(
                 f"Computing {', '.join(names_to_compute)}… {pct}%"
             )
+            self._progress_bar.setValue(pct)
             QCoreApplication.processEvents()
 
         try:
@@ -492,10 +512,12 @@ class MainWindow(QMainWindow):
                 chunk_size=5_000,
             )
         except Exception as exc:
+            self._progress_bar.hide()
             QMessageBox.critical(self, "Compute error", str(exc))
             self._status.showMessage("Compute failed")
             return
 
+        self._progress_bar.hide()
         self._computed_results.update(new_results)
 
         self._refresh_map_combo()
@@ -1278,9 +1300,10 @@ class _LoadDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Load dataset")
-        self.resize(460, 200)
+        self.resize(480, 210)
 
         form = QFormLayout()
+        form.setSpacing(8)
 
         self._type_combo = QComboBox()
         self._type_combo.addItems(["image_stack", "txt_matrix"])
@@ -1289,8 +1312,12 @@ class _LoadDialog(QDialog):
 
         # Path selection
         path_row = QHBoxLayout()
+        path_row.setSpacing(6)
         self._path_label = QLabel("(none)")
-        self._path_label.setMinimumWidth(250)
+        self._path_label.setMinimumWidth(260)
+        self._path_label.setStyleSheet(
+            "color: #808080; font-size: 11px; background: transparent;"
+        )
         btn_browse = QPushButton("Browse…")
         btn_browse.clicked.connect(self._on_browse)
         path_row.addWidget(self._path_label)
@@ -1312,15 +1339,20 @@ class _LoadDialog(QDialog):
 
         # OK / Cancel
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
         btn_ok = QPushButton("Load")
+        btn_ok.setMinimumWidth(80)
         btn_ok.clicked.connect(self.accept)
         btn_cancel = QPushButton("Cancel")
+        btn_cancel.setMinimumWidth(80)
         btn_cancel.clicked.connect(self.reject)
         btn_row.addStretch()
         btn_row.addWidget(btn_ok)
         btn_row.addWidget(btn_cancel)
 
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(10)
         outer.addLayout(form)
         outer.addLayout(btn_row)
 
@@ -1344,6 +1376,9 @@ class _LoadDialog(QDialog):
         if path:
             self._selected_path = path
             self._path_label.setText(path)
+            self._path_label.setStyleSheet(
+                "color: #d4d4d4; font-size: 11px; background: transparent;"
+            )
 
     def load(self) -> SignalSet:
         """Execute the appropriate backend loader and return a SignalSet.

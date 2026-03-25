@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from quality_tool.gui.style import apply_mpl_dark_style, create_dark_figure
 
 
 class CompareWindow(QWidget):
@@ -27,9 +28,10 @@ class CompareWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.resize(500, 450)
 
-        figure = Figure(tight_layout=True)
+        figure = create_dark_figure(tight_layout=True)
         canvas = FigureCanvasQTAgg(figure)
         ax = figure.add_subplot(111)
+        apply_mpl_dark_style(figure)
 
         is_bool = data.dtype == bool
         if is_bool:
@@ -44,5 +46,5 @@ class CompareWindow(QWidget):
         ax.set_title(title)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.addWidget(canvas)

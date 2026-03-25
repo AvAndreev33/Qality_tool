@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from quality_tool.gui.style import apply_mpl_dark_style, create_dark_figure
 
 # Zoom factor per scroll step (< 1 means zoom in).
 _ZOOM_IN_FACTOR = 0.8
@@ -31,9 +32,10 @@ class MapViewer(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self._figure = Figure(tight_layout=True)
+        self._figure = create_dark_figure(tight_layout=True)
         self._canvas = FigureCanvasQTAgg(self._figure)
         self._ax = self._figure.add_subplot(111)
+        apply_mpl_dark_style(self._figure)
         self._colorbar = None
         self._image = None
 
@@ -92,6 +94,7 @@ class MapViewer(QWidget):
         )
         self._colorbar = self._figure.colorbar(self._image, ax=self._ax)
         self._ax.set_title(title)
+        apply_mpl_dark_style(self._figure)
         self._marker = None
         self._store_home_limits()
         self._restore_view(prev)
@@ -143,6 +146,7 @@ class MapViewer(QWidget):
         )
         self._colorbar = self._figure.colorbar(self._image, ax=self._ax)
         self._ax.set_title(title)
+        apply_mpl_dark_style(self._figure)
         self._marker = None
         self._store_home_limits()
         self._restore_view(prev)
@@ -162,6 +166,7 @@ class MapViewer(QWidget):
 
         self._image = self._ax.imshow(rgb, origin="upper", aspect="equal")
         self._ax.set_title(title)
+        apply_mpl_dark_style(self._figure)
         self._marker = None
         self._store_home_limits()
         self._restore_view(prev)
@@ -179,6 +184,7 @@ class MapViewer(QWidget):
         self._data = None
         self._remove_colorbar()
         self._ax.clear()
+        apply_mpl_dark_style(self._figure)
         self._image = None
         self._marker = None
         self._selected_rc = None

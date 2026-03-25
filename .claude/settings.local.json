@@ -92,7 +92,12 @@
       "Bash(find C:/Users/avand/PycharmProjects/wli_research_workbench/src/quality_tool/gui -name *metric* -type f)",
       "Bash(xargs ls:*)",
       "Bash(python -m pytest tests/test_metrics/test_phase_metrics.py tests/test_metrics/test_correlation_metrics.py tests/test_metrics/test_metric_registration.py -v)",
-      "Bash(py -m pytest tests/test_metrics/test_phase_metrics.py tests/test_metrics/test_correlation_metrics.py tests/test_metrics/test_metric_registration.py -v)"
+      "Bash(py -m pytest tests/test_metrics/test_phase_metrics.py tests/test_metrics/test_correlation_metrics.py tests/test_metrics/test_metric_registration.py -v)",
+      "WebSearch",
+      "Bash(python -m pytest tests/test_gui/ -x -q)",
+      "Bash(py -m pytest tests/test_gui/ -x -q)",
+      "Bash(py -m pytest -x -q)",
+      "Bash(py -c \"from quality_tool.gui.style import DARK_STYLESHEET, apply_mpl_dark_style, create_dark_figure; print\\(''OK''\\)\")"
     ]
   }
 }

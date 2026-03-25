@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+
+from quality_tool.gui.style import apply_mpl_dark_style, create_dark_figure
 
 
 def compute_map_statistics(values: np.ndarray) -> dict[str, float]:
@@ -80,12 +81,14 @@ class HistogramWindow(QWidget):
 
         # --- build UI ---
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
 
         # Histogram plot.
-        figure = Figure(tight_layout=True)
+        figure = create_dark_figure(tight_layout=True)
         self._canvas = FigureCanvasQTAgg(figure)
         ax = figure.add_subplot(111)
+        apply_mpl_dark_style(figure)
 
         if self._values.size > 0:
             ax.hist(self._values, bins=50, color="#4a86c8", edgecolor="#2a5a8c",
@@ -96,7 +99,7 @@ class HistogramWindow(QWidget):
 
         # Threshold line.
         if threshold_value is not None:
-            ax.axvline(threshold_value, color="red", linewidth=1.5,
+            ax.axvline(threshold_value, color="#e05252", linewidth=1.5,
                        linestyle="--", label=f"threshold={threshold_value:.4g}")
             ax.legend(fontsize=8)
 
@@ -104,19 +107,27 @@ class HistogramWindow(QWidget):
 
         # --- statistics labels ---
         stats_row = QHBoxLayout()
+        stats_row.setSpacing(12)
+
+        _stats_style = (
+            "font-size: 11px; font-family: monospace;"
+            "color: #d4d4d4; background-color: #252526;"
+            "border: 1px solid #3e3e42; border-radius: 3px;"
+            "padding: 6px 8px;"
+        )
 
         # Map statistics (left).
         map_text = self._format_map_stats()
         map_label = QLabel(map_text)
         map_label.setTextFormat(Qt.TextFormat.PlainText)
-        map_label.setStyleSheet("font-size: 11px; font-family: monospace;")
+        map_label.setStyleSheet(_stats_style)
         stats_row.addWidget(map_label, stretch=1)
 
         # Threshold statistics (right).
         thresh_text = self._format_threshold_stats()
         thresh_label = QLabel(thresh_text)
         thresh_label.setTextFormat(Qt.TextFormat.PlainText)
-        thresh_label.setStyleSheet("font-size: 11px; font-family: monospace;")
+        thresh_label.setStyleSheet(_stats_style)
         stats_row.addWidget(thresh_label, stretch=1)
 
         layout.addLayout(stats_row)

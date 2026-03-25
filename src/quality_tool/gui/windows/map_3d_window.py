@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from quality_tool.gui.style import apply_mpl_dark_style, create_dark_figure
 
 
 class Map3DWindow(QWidget):
@@ -30,9 +31,10 @@ class Map3DWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.resize(600, 500)
 
-        figure = Figure(tight_layout=True)
+        figure = create_dark_figure(tight_layout=True)
         canvas = FigureCanvasQTAgg(figure)
         ax = figure.add_subplot(111, projection="3d")
+        apply_mpl_dark_style(figure)
 
         h, w = data.shape
         x = np.arange(w)
@@ -55,6 +57,12 @@ class Map3DWindow(QWidget):
         ax.set_zlabel("value")
         ax.set_title(title)
 
+        # Style 3D pane backgrounds for dark theme.
+        pane_color = (0.18, 0.18, 0.19, 1.0)
+        ax.xaxis.set_pane_color(pane_color)
+        ax.yaxis.set_pane_color(pane_color)
+        ax.zaxis.set_pane_color(pane_color)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.addWidget(canvas)

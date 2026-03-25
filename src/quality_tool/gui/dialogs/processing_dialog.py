@@ -33,15 +33,18 @@ class ProcessingDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Processing Settings")
-        self.resize(360, 340)
+        self.resize(380, 360)
 
         cur = current or {}
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
         # --- Preprocessing group ---
         pp_group = QGroupBox("Preprocessing")
         pp_layout = QVBoxLayout(pp_group)
+        pp_layout.setSpacing(5)
 
         self._chk_baseline = QCheckBox("Baseline subtraction")
         self._chk_baseline.setChecked(cur.get("baseline", False))
@@ -60,6 +63,7 @@ class ProcessingDialog(QDialog):
         # --- ROI group ---
         roi_group = QGroupBox("ROI Extraction")
         roi_layout = QVBoxLayout(roi_group)
+        roi_layout.setSpacing(5)
 
         self._chk_roi = QCheckBox("Enable ROI")
         self._chk_roi.setChecked(cur.get("roi_enabled", False))
@@ -80,6 +84,7 @@ class ProcessingDialog(QDialog):
         # --- Envelope group ---
         env_group = QGroupBox("Envelope")
         env_layout = QVBoxLayout(env_group)
+        env_layout.setSpacing(5)
 
         self._chk_envelope = QCheckBox("Enable envelope")
         self._chk_envelope.setChecked(cur.get("envelope_enabled", False))
@@ -101,10 +106,13 @@ class ProcessingDialog(QDialog):
 
         # --- OK / Cancel ---
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
         btn_row.addStretch()
         btn_ok = QPushButton("OK")
+        btn_ok.setMinimumWidth(80)
         btn_ok.clicked.connect(self.accept)
         btn_cancel = QPushButton("Cancel")
+        btn_cancel.setMinimumWidth(80)
         btn_cancel.clicked.connect(self.reject)
         btn_row.addWidget(btn_ok)
         btn_row.addWidget(btn_cancel)

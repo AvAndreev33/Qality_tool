@@ -41,7 +41,7 @@ class PixelMetricsTableWindow(QWidget):
         self.resize(520, 300)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         columns = ["Metric", "Category", "Native", "Normalized", "Valid"]
         table = QTableWidget(len(metrics_data), len(columns))

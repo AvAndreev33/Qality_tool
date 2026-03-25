@@ -46,14 +46,18 @@ class MapToolsPanel(QWidget):
         self.setFixedWidth(_PANEL_WIDTH)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
 
         # --- Threshold group ---
         group = QGroupBox("Threshold")
         group_layout = QVBoxLayout(group)
+        group_layout.setSpacing(5)
 
         # Mask-source metric selector
-        group_layout.addWidget(QLabel("Mask source:"))
+        lbl_source = QLabel("Mask source")
+        lbl_source.setStyleSheet("font-size: 10px; color: #808080; background: transparent;")
+        group_layout.addWidget(lbl_source)
         self.mask_source_combo = QComboBox()
         self.mask_source_combo.currentTextChanged.connect(self.mask_source_changed)
         group_layout.addWidget(self.mask_source_combo)
@@ -81,6 +85,7 @@ class MapToolsPanel(QWidget):
         # --- View group ---
         view_group = QGroupBox("View")
         view_layout = QVBoxLayout(view_group)
+        view_layout.setSpacing(5)
 
         self.btn_reset_view = QPushButton("Reset view")
         self.btn_reset_view.clicked.connect(self.reset_view_clicked)
@@ -107,10 +112,12 @@ class SignalToolsPanel(QWidget):
         self.setFixedWidth(_PANEL_WIDTH)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
 
         group = QGroupBox("Signal Display")
         group_layout = QVBoxLayout(group)
+        group_layout.setSpacing(5)
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItems([

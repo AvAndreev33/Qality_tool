@@ -589,3 +589,4 @@ tests/test_metrics/__pycache__/test_correlation_metrics.cpython-314-pytest-9.0.2
 tests/test_metrics/__pycache__/test_metric_registration.cpython-314-pytest-9.0.2.pyc
 tests/test_metrics/__pycache__/test_phase_metrics.cpython-314-pytest-9.0.2.pyc
 tests/__pycache__/test_iteration_map_nav.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/gui/__pycache__/style.cpython-314.pyc

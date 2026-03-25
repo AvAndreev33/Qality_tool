@@ -60,17 +60,22 @@ class MetricsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Select metrics")
-        self.resize(620, 520)
+        self.resize(640, 540)
 
         selected = selected or []
         self._checkboxes: dict[str, QCheckBox] = {}
 
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(10)
 
         # --- two-column area ---
         columns = QHBoxLayout()
+        columns.setSpacing(20)
         left_col = QVBoxLayout()
+        left_col.setSpacing(3)
         right_col = QVBoxLayout()
+        right_col.setSpacing(3)
 
         for category, items in registry.list_grouped():
             target = (
@@ -80,8 +85,13 @@ class MetricsDialog(QDialog):
             )
 
             label_text = _CATEGORY_LABELS.get(category, category.title())
-            header = QLabel(f"<b>{label_text}</b>")
-            header.setContentsMargins(0, 6, 0, 2)
+            header = QLabel(label_text)
+            header.setStyleSheet(
+                "font-weight: bold; font-size: 11px; color: #d4d4d4;"
+                "padding: 6px 0 3px 0; background: transparent;"
+                "border-bottom: 1px solid #3e3e42;"
+            )
+            header.setContentsMargins(0, 8, 0, 2)
             target.addWidget(header)
 
             for name, display_name in items:
@@ -94,17 +104,19 @@ class MetricsDialog(QDialog):
         right_col.addStretch()
 
         columns.addLayout(left_col)
-        columns.addSpacing(24)
         columns.addLayout(right_col)
 
         outer.addLayout(columns)
 
         # --- button row ---
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
         btn_ok = QPushButton("OK")
         btn_ok.clicked.connect(self.accept)
+        btn_ok.setMinimumWidth(80)
         btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
+        btn_cancel.setMinimumWidth(80)
         btn_row.addStretch()
         btn_row.addWidget(btn_ok)
         btn_row.addWidget(btn_cancel)

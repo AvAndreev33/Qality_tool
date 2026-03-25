@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from quality_tool.gui.style import apply_mpl_dark_style, create_dark_figure
 
 
 class PixelMetricsChartWindow(QWidget):
@@ -39,13 +40,14 @@ class PixelMetricsChartWindow(QWidget):
         self.resize(480, max(200, 30 * len(metrics_data) + 80))
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(6, 6, 6, 6)
 
-        fig = Figure(tight_layout=True)
+        fig = create_dark_figure(tight_layout=True)
         canvas = FigureCanvasQTAgg(fig)
         layout.addWidget(canvas)
 
         ax = fig.add_subplot(111)
+        apply_mpl_dark_style(fig)
 
         # Sort by normalized score (invalid last).
         sorted_data = sorted(
@@ -62,7 +64,7 @@ class PixelMetricsChartWindow(QWidget):
 
         y_pos = np.arange(len(names))
         colors = [
-            "tab:blue" if v else "lightgray" for v in valid_flags
+            "#4a86c8" if v else "#555555" for v in valid_flags
         ]
 
         ax.barh(y_pos, scores, color=colors, edgecolor="none", height=0.6)

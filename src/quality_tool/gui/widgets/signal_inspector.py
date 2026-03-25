@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from quality_tool.gui.style import apply_mpl_dark_style, create_dark_figure
 
 
 class SignalInspector(QWidget):
@@ -20,9 +21,10 @@ class SignalInspector(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self._figure = Figure(tight_layout=True)
+        self._figure = create_dark_figure(tight_layout=True)
         self._canvas = FigureCanvasQTAgg(self._figure)
         self._ax = self._figure.add_subplot(111)
+        apply_mpl_dark_style(self._figure)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -61,7 +63,8 @@ class SignalInspector(QWidget):
             If provided, overlay this 1-D envelope on the plot.
         """
         self._ax.clear()
-        self._ax.plot(z_axis, signal, linewidth=0.8, label=label)
+        apply_mpl_dark_style(self._figure)
+        self._ax.plot(z_axis, signal, linewidth=0.8, label=label, color="#4fc3f7")
         if envelope is not None:
             self._ax.plot(
                 z_axis, envelope, linewidth=1.0, linestyle="--",
@@ -101,6 +104,7 @@ class SignalInspector(QWidget):
             orange shaded span.
         """
         self._ax.clear()
+        apply_mpl_dark_style(self._figure)
 
         if expected_band_info is not None:
             e_carrier, e_lo, e_hi = expected_band_info
@@ -124,7 +128,7 @@ class SignalInspector(QWidget):
                 linestyle="--", alpha=0.6,
             )
 
-        self._ax.plot(frequencies, amplitude, linewidth=0.8, label="spectrum")
+        self._ax.plot(frequencies, amplitude, linewidth=0.8, label="spectrum", color="#4fc3f7")
         self._ax.set_yscale("log")
         self._ax.set_xlabel("frequency")
         self._ax.set_ylabel("amplitude")
@@ -160,6 +164,7 @@ class SignalInspector(QWidget):
             Lag of the dominant autocorrelation peak in the search window.
         """
         self._ax.clear()
+        apply_mpl_dark_style(self._figure)
 
         if search_window is not None:
             tau_lo, tau_hi = search_window
@@ -174,7 +179,7 @@ class SignalInspector(QWidget):
                 linestyle=":", alpha=0.7, label="expected period",
             )
 
-        self._ax.plot(lags, autocorr, linewidth=0.8, label="autocorrelation")
+        self._ax.plot(lags, autocorr, linewidth=0.8, label="autocorrelation", color="#4fc3f7")
 
         if detected_peak_lag is not None:
             # Find the autocorrelation value at the detected peak lag.
@@ -197,6 +202,7 @@ class SignalInspector(QWidget):
     def clear(self) -> None:
         """Clear the signal plot."""
         self._ax.clear()
+        apply_mpl_dark_style(self._figure)
         self._ax.set_xlabel("z")
         self._ax.set_ylabel("intensity")
         self._ax.set_title("Signal")
