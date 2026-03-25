@@ -132,6 +132,68 @@ class SignalInspector(QWidget):
         self._ax.legend(loc="upper right", fontsize="small")
         self._canvas.draw_idle()
 
+    def update_autocorrelation(
+        self,
+        lags: np.ndarray,
+        autocorr: np.ndarray,
+        *,
+        title: str | None = None,
+        expected_period: float | None = None,
+        search_window: tuple[float, float] | None = None,
+        detected_peak_lag: float | None = None,
+    ) -> None:
+        """Plot normalized autocorrelation with expected-period guidance.
+
+        Parameters
+        ----------
+        lags : np.ndarray
+            1-D array of lag values.
+        autocorr : np.ndarray
+            1-D array of normalized autocorrelation values.
+        title : str or None
+            Plot title.
+        expected_period : float or None
+            Expected fringe period in samples — shown as a vertical line.
+        search_window : tuple or None
+            ``(tau_min, tau_max)`` — shaded search interval.
+        detected_peak_lag : float or None
+            Lag of the dominant autocorrelation peak in the search window.
+        """
+        self._ax.clear()
+
+        if search_window is not None:
+            tau_lo, tau_hi = search_window
+            self._ax.axvspan(
+                tau_lo, tau_hi, alpha=0.12, color="tab:orange",
+                label="search window",
+            )
+
+        if expected_period is not None:
+            self._ax.axvline(
+                expected_period, color="tab:orange", linewidth=0.8,
+                linestyle=":", alpha=0.7, label="expected period",
+            )
+
+        self._ax.plot(lags, autocorr, linewidth=0.8, label="autocorrelation")
+
+        if detected_peak_lag is not None:
+            # Find the autocorrelation value at the detected peak lag.
+            idx = int(round(detected_peak_lag))
+            idx = max(0, min(idx, len(autocorr) - 1))
+            self._ax.plot(
+                detected_peak_lag, autocorr[idx], "o",
+                color="tab:red", markersize=5, label="detected peak",
+            )
+
+        self._ax.axhline(0, color="gray", linewidth=0.5, alpha=0.5)
+        self._ax.set_yscale("linear")
+        self._ax.set_ylim(-1.05, 1.05)
+        self._ax.set_xlabel("lag (samples)")
+        self._ax.set_ylabel("normalized autocorrelation")
+        self._ax.set_title(title or "Autocorrelation")
+        self._ax.legend(loc="upper right", fontsize="small")
+        self._canvas.draw_idle()
+
     def clear(self) -> None:
         """Clear the signal plot."""
         self._ax.clear()

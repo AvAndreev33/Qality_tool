@@ -54,6 +54,8 @@ class MapViewer(QWidget):
         data: np.ndarray,
         title: str = "",
         cmap: str = "viridis",
+        vmin: float | None = None,
+        vmax: float | None = None,
     ) -> None:
         """Display a 2D array in the viewer.
 
@@ -65,6 +67,9 @@ class MapViewer(QWidget):
             Title shown above the map.
         cmap : str
             Matplotlib colormap name.
+        vmin, vmax : float or None
+            Optional explicit color range.  When ``None``, matplotlib
+            auto-scales to the data range.
         """
         self._data = data
         self._remove_colorbar()
@@ -72,6 +77,7 @@ class MapViewer(QWidget):
 
         self._image = self._ax.imshow(
             data, origin="upper", aspect="equal", cmap=cmap,
+            vmin=vmin, vmax=vmax,
         )
         self._colorbar = self._figure.colorbar(self._image, ax=self._ax)
         self._ax.set_title(title)

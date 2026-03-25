@@ -97,7 +97,10 @@ class SignalToolsPanel(QWidget):
         group_layout = QVBoxLayout(group)
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Raw", "Processed", "Spectrum", "Processed spectrum"])
+        self.mode_combo.addItems([
+            "Raw", "Processed", "Canonical processed",
+            "Spectrum", "Processed spectrum", "Autocorrelation",
+        ])
         self.mode_combo.currentTextChanged.connect(self.display_mode_changed)
         group_layout.addWidget(self.mode_combo)
 

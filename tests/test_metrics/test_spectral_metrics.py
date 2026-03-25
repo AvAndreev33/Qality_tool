@@ -34,12 +34,6 @@ from quality_tool.metrics.spectral.carrier_to_background_spectral_ratio import (
 from quality_tool.metrics.spectral.energy_concentration_in_working_band import (
     EnergyConcentrationInWorkingBand,
 )
-from quality_tool.metrics.spectral.low_frequency_trend_energy_fraction import (
-    LowFrequencyTrendEnergyFraction,
-)
-from quality_tool.metrics.spectral.harmonic_distortion_level import (
-    HarmonicDistortionLevel,
-)
 from quality_tool.metrics.spectral.spectral_centroid_offset import SpectralCentroidOffset
 from quality_tool.metrics.spectral.spectral_spread import SpectralSpread
 from quality_tool.metrics.spectral.spectral_entropy import SpectralEntropy
@@ -47,9 +41,6 @@ from quality_tool.metrics.spectral.spectral_kurtosis import SpectralKurtosis
 from quality_tool.metrics.spectral.spectral_peak_sharpness import SpectralPeakSharpness
 from quality_tool.metrics.spectral.envelope_spectrum_consistency import (
     EnvelopeSpectrumConsistency,
-)
-from quality_tool.metrics.spectral.spectral_correlation_score import (
-    SpectralCorrelationScore,
 )
 
 
@@ -248,15 +239,12 @@ ALL_SPECTRAL_METRIC_CLASSES = [
     DominantSpectralPeakProminence,
     CarrierToBackgroundSpectralRatio,
     EnergyConcentrationInWorkingBand,
-    LowFrequencyTrendEnergyFraction,
-    HarmonicDistortionLevel,
     SpectralCentroidOffset,
     SpectralSpread,
     SpectralEntropy,
     SpectralKurtosis,
     SpectralPeakSharpness,
     EnvelopeSpectrumConsistency,
-    SpectralCorrelationScore,
 ]
 
 
@@ -325,21 +313,6 @@ class TestScalarEvaluationPureCarrier:
         assert result.valid
         assert result.score > 0.5
 
-    def test_low_freq_trend(self):
-        signal = _pure_carrier()
-        ctx = _make_power_context(signal)
-        m = LowFrequencyTrendEnergyFraction()
-        result = m.evaluate(signal, context=ctx)
-        assert result.valid
-        assert result.score < 0.1  # very little low-freq energy
-
-    def test_harmonic_distortion(self):
-        signal = _pure_carrier()
-        ctx = _make_power_context(signal)
-        m = HarmonicDistortionLevel()
-        result = m.evaluate(signal, context=ctx)
-        assert result.valid
-
     def test_centroid_offset(self):
         signal = _pure_carrier()
         ctx = _make_power_context(signal)
@@ -380,20 +353,6 @@ class TestScalarEvaluationPureCarrier:
         assert result.valid
         assert result.score > 0.0
 
-    def test_spectral_correlation(self):
-        # Longer signal for local windowing.
-        signal = _pure_carrier(m=256)
-        ctx_obj = AnalysisContext()
-        priors = compute_spectral_priors(256, ctx_obj)
-        context = {
-            "analysis_context": ctx_obj,
-            "spectral_priors": priors,
-        }
-        m = SpectralCorrelationScore()
-        result = m.evaluate(signal, context=context)
-        assert result.valid
-        assert result.score > 0.5
-
 
 # ================================================================
 # Scalar evaluation on noise
@@ -432,14 +391,11 @@ class TestBatchConsistency:
         DominantSpectralPeakProminence,
         CarrierToBackgroundSpectralRatio,
         EnergyConcentrationInWorkingBand,
-        LowFrequencyTrendEnergyFraction,
-        HarmonicDistortionLevel,
         SpectralCentroidOffset,
         SpectralSpread,
         SpectralEntropy,
         SpectralKurtosis,
         SpectralPeakSharpness,
-        SpectralCorrelationScore,
     ])
     def test_scalar_batch_consistency(self, cls):
         signal = _carrier_with_noise(m=128)
@@ -500,15 +456,6 @@ class TestInvalidCases:
         # No wavelength/coherence → valid=False
         assert not result.valid
 
-    def test_spectral_correlation_short_signal(self):
-        signal = _pure_carrier(m=8)  # too short for local windows
-        ctx_obj = AnalysisContext()
-        priors = compute_spectral_priors(8, ctx_obj)
-        ctx = {"analysis_context": ctx_obj, "spectral_priors": priors}
-        m = SpectralCorrelationScore()
-        result = m.evaluate(signal, context=ctx)
-        assert not result.valid
-
 
 # ================================================================
 # Envelope–spectrum consistency with metadata
@@ -552,18 +499,27 @@ class TestGUIGrouping:
             "dominant_spectral_peak_prominence",
             "carrier_to_background_spectral_ratio",
             "energy_concentration_in_working_band",
-            "low_frequency_trend_energy_fraction",
-            "harmonic_distortion_level",
             "spectral_centroid_offset",
             "spectral_spread",
             "spectral_entropy",
             "spectral_kurtosis",
             "spectral_peak_sharpness",
             "envelope_spectrum_consistency",
-            "spectral_correlation_score",
         ]
         for name in expected_names:
             assert name in names, f"{name} not registered"
+
+    def test_removed_metrics_not_registered(self):
+        """Verify that removed spectral metrics are no longer registered."""
+        from quality_tool.metrics.registry import default_registry
+        names = default_registry.list_metrics()
+        removed = [
+            "low_frequency_trend_energy_fraction",
+            "harmonic_distortion_level",
+            "spectral_correlation_score",
+        ]
+        for name in removed:
+            assert name not in names, f"{name} should have been removed"
 
     def test_spectral_group_in_registry(self):
         from quality_tool.metrics.registry import default_registry
@@ -575,7 +531,7 @@ class TestGUIGrouping:
         from quality_tool.metrics.registry import default_registry
         groups = dict(default_registry.list_grouped())
         spectral_items = groups.get("spectral", [])
-        assert len(spectral_items) == 13
+        assert len(spectral_items) == 10
 
     def test_category_labels_include_spectral(self):
         from quality_tool.gui.dialogs.metrics_dialog import _CATEGORY_LABELS

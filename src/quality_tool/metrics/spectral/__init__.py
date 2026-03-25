@@ -16,12 +16,6 @@ from quality_tool.metrics.spectral.carrier_to_background_spectral_ratio import (
 from quality_tool.metrics.spectral.energy_concentration_in_working_band import (
     EnergyConcentrationInWorkingBand,
 )
-from quality_tool.metrics.spectral.low_frequency_trend_energy_fraction import (
-    LowFrequencyTrendEnergyFraction,
-)
-from quality_tool.metrics.spectral.harmonic_distortion_level import (
-    HarmonicDistortionLevel,
-)
 from quality_tool.metrics.spectral.spectral_centroid_offset import (
     SpectralCentroidOffset,
 )
@@ -34,9 +28,6 @@ from quality_tool.metrics.spectral.spectral_peak_sharpness import (
 from quality_tool.metrics.spectral.envelope_spectrum_consistency import (
     EnvelopeSpectrumConsistency,
 )
-from quality_tool.metrics.spectral.spectral_correlation_score import (
-    SpectralCorrelationScore,
-)
 from quality_tool.metrics.registry import default_registry
 
 ALL_SPECTRAL_METRICS = [
@@ -44,15 +35,12 @@ ALL_SPECTRAL_METRICS = [
     DominantSpectralPeakProminence(),
     CarrierToBackgroundSpectralRatio(),
     EnergyConcentrationInWorkingBand(),
-    LowFrequencyTrendEnergyFraction(),
-    HarmonicDistortionLevel(),
     SpectralCentroidOffset(),
     SpectralSpread(),
     SpectralEntropy(),
     SpectralKurtosis(),
     SpectralPeakSharpness(),
     EnvelopeSpectrumConsistency(),
-    SpectralCorrelationScore(),
 ]
 
 for _m in ALL_SPECTRAL_METRICS:

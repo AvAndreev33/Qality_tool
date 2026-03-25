@@ -568,3 +568,5 @@ src/quality_tool/metrics/spectral/__pycache__/spectral_spread.cpython-314.pyc
 tests/test_spectral/__pycache__/test_priors.cpython-314-pytest-9.0.2.pyc
 tests/test_metrics/__pycache__/test_spectral_metrics.cpython-314-pytest-9.0.2.pyc
 src/quality_tool/spectral/__pycache__/priors.cpython-314.pyc
+tests/__pycache__/test_iteration_cleanup.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/spectral/__pycache__/autocorrelation.cpython-314.pyc

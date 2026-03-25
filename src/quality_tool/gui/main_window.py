@@ -51,6 +51,7 @@ from quality_tool.gui.widgets.map_viewer import MapViewer
 from quality_tool.gui.widgets.signal_inspector import SignalInspector
 from quality_tool.gui.widgets.tool_panels import MapToolsPanel, SignalToolsPanel
 from quality_tool.comparison.normalization import (
+    normalize_score_map,
     normalize_single,
     reference_range_from_map,
 )
@@ -81,6 +82,10 @@ from quality_tool.metrics.base import (
     resolve_category,
     resolve_score_direction,
     resolve_score_scale,
+)
+from quality_tool.spectral.autocorrelation import (
+    compute_normalized_autocorrelation,
+    find_autocorrelation_peak,
 )
 from quality_tool.spectral.fft import compute_spectrum, find_carrier_band
 from quality_tool.spectral.priors import compute_spectral_priors
@@ -268,7 +273,7 @@ class MainWindow(QMainWindow):
         # Display mode selector
         tb.addWidget(QLabel(" View: "))
         self._display_combo = QComboBox()
-        self._display_combo.addItems(["score", "masked", "mask_only"])
+        self._display_combo.addItems(["score", "normalized_score", "masked", "mask_only"])
         self._display_combo.currentTextChanged.connect(
             self._on_display_mode_changed,
         )
@@ -748,6 +753,9 @@ class MainWindow(QMainWindow):
     # Signal display logic
     # ==================================================================
 
+    # Modes where envelope overlay is meaningful.
+    _ENVELOPE_MODES = {"Raw", "Processed", "Canonical processed"}
+
     def _update_signal_display(self, row: int, col: int) -> None:
         """Render the signal inspector for the given pixel using the
         current signal display mode.
@@ -763,6 +771,11 @@ class MainWindow(QMainWindow):
         title = f"Pixel ({row}, {col})"
         mode = self._signal_display_mode
 
+        # Disable envelope checkbox for modes where it is not meaningful.
+        self._signal_tools.envelope_checkbox.setEnabled(
+            mode in self._ENVELOPE_MODES,
+        )
+
         if mode == "Raw":
             envelope = self._compute_envelope_for_display(signal) if self._envelope_overlay else None
             self._signal_inspector.update_signal(
@@ -774,6 +787,16 @@ class MainWindow(QMainWindow):
             envelope = self._compute_envelope_for_display(processed) if self._envelope_overlay else None
             self._signal_inspector.update_signal(
                 processed, proc_z, label="processed", title=title,
+                envelope=envelope,
+            )
+
+        elif mode == "Canonical processed":
+            canonical = self._prepare_canonical_processed_signal(signal)
+            canonical_z = np.arange(len(canonical), dtype=float)
+            envelope = self._compute_envelope_for_display(canonical) if self._envelope_overlay else None
+            self._signal_inspector.update_signal(
+                canonical, canonical_z, label="canonical processed",
+                title=f"{title} — canonical processed",
                 envelope=envelope,
             )
 
@@ -791,7 +814,7 @@ class MainWindow(QMainWindow):
             )
 
         elif mode == "Processed spectrum":
-            processed = self._prepare_noise_recipe_signal(signal)
+            processed = self._prepare_canonical_processed_signal(signal)
             try:
                 spectral = compute_spectrum(processed)
             except Exception:
@@ -810,6 +833,20 @@ class MainWindow(QMainWindow):
                 title=f"{title} — processed spectrum",
                 band_info=band_info,
                 expected_band_info=expected_band_info,
+            )
+
+        elif mode == "Autocorrelation":
+            canonical = self._prepare_canonical_processed_signal(signal)
+            lags, autocorr = compute_normalized_autocorrelation(canonical)
+            expected_period, search_window, detected_peak = (
+                self._compute_autocorrelation_guidance(autocorr)
+            )
+            self._signal_inspector.update_autocorrelation(
+                lags, autocorr,
+                title=f"{title} — autocorrelation",
+                expected_period=expected_period,
+                search_window=search_window,
+                detected_peak_lag=detected_peak,
             )
 
         else:
@@ -846,12 +883,19 @@ class MainWindow(QMainWindow):
     def _compute_envelope_for_display(
         self, signal: np.ndarray,
     ) -> np.ndarray | None:
-        """Compute envelope for display, baseline-subtracting first.
+        """Compute envelope on-the-fly from the given signal.
+
+        The envelope is computed from the currently displayed signal
+        using the selected envelope method from the registry.  This
+        does not depend on whether envelope is enabled in the
+        processing settings — it is a viewer-side inspection tool.
 
         Returns None if envelope computation is not possible.
         """
-        env_method = self._get_envelope_method()
-        if env_method is None:
+        method_name = self._processing.get("envelope_method", "analytic")
+        try:
+            env_method = self._envelope_registry.get(method_name)
+        except KeyError:
             return None
         try:
             centered = subtract_baseline(signal)
@@ -874,12 +918,15 @@ class MainWindow(QMainWindow):
             fns.append(smooth)
         return fns
 
-    def _prepare_noise_recipe_signal(self, signal: np.ndarray) -> np.ndarray:
-        """Prepare a signal using the fixed noise-metric recipe.
+    def _prepare_canonical_processed_signal(
+        self, signal: np.ndarray,
+    ) -> np.ndarray:
+        """Prepare a signal using the canonical processed recipe.
 
         Applies baseline subtraction, linear detrending, and ROI
         extraction — the same steps as
-        ``ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED`` used by noise metrics.
+        ``ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED`` used by noise,
+        regularity, and spectral metrics.
         This is independent of the GUI processing settings.
         """
         processed = subtract_baseline(signal.copy())
@@ -890,6 +937,32 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         return processed
+
+    def _compute_autocorrelation_guidance(
+        self,
+        autocorr: np.ndarray,
+    ) -> tuple[float | None, tuple[float, float] | None, float | None]:
+        """Compute expected-period guidance for autocorrelation display.
+
+        Returns ``(expected_period, search_window, detected_peak_lag)``
+        where any element may be ``None`` if the context is unavailable.
+        """
+        if self._signal_set is None:
+            return None, None, None
+        try:
+            ctx = build_analysis_context(self._signal_set)
+        except Exception:
+            return None, None, None
+
+        t_exp = float(ctx.expected_period_samples)
+        delta_t = ctx.period_search_tolerance_fraction
+        tau_min = round((1.0 - delta_t) * t_exp)
+        tau_max = round((1.0 + delta_t) * t_exp)
+
+        detected = find_autocorrelation_peak(autocorr, tau_min, tau_max)
+        detected_lag = float(detected) if detected is not None else None
+
+        return t_exp, (float(tau_min), float(tau_max)), detected_lag
 
     def _compute_expected_band_info(
         self,
@@ -1020,7 +1093,20 @@ class MainWindow(QMainWindow):
         else:
             vmin, vmax = 0.0, 1.0
 
-        if self._display_mode == "masked" and tr is not None:
+        if self._display_mode == "normalized_score":
+            metric = self._registry.get(name)
+            direction = resolve_score_direction(metric)
+            scale = resolve_score_scale(metric)
+            norm_map = normalize_score_map(
+                result.score_map, result.valid_map, direction, scale,
+            )
+            self._map_viewer.set_map(
+                norm_map,
+                title=f"{name} — normalized score",
+                vmin=0.0,
+                vmax=1.0,
+            )
+        elif self._display_mode == "masked" and tr is not None:
             source = self._mask_source_metric or name
             self._map_viewer.set_masked_map(
                 result.score_map,

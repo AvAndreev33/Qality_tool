@@ -80,7 +80,15 @@
       "Bash(python -m pytest tests/test_spectral/test_priors.py -v --tb=short)",
       "Bash(py -m pytest tests/test_spectral/test_priors.py -v --tb=short)",
       "Bash(py -m pytest tests/test_metrics/test_spectral_metrics.py -v --tb=short)",
-      "Bash(py -m pytest tests/test_metrics/test_spectral_metrics.py tests/test_spectral/test_priors.py -v --tb=short)"
+      "Bash(py -m pytest tests/test_metrics/test_spectral_metrics.py tests/test_spectral/test_priors.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_iteration_cleanup.py tests/test_metrics/test_spectral_metrics.py tests/test_gui/test_widgets.py -v)",
+      "Bash(py -m pytest tests/test_iteration_cleanup.py tests/test_metrics/test_spectral_metrics.py tests/test_gui/test_widgets.py -v)",
+      "Bash(py -m pytest tests/test_iteration_cleanup.py tests/test_metrics/test_spectral_metrics.py tests/test_gui/test_widgets.py --tb=short -q)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(py -m pytest tests/test_iteration_cleanup.py::TestMetricRemoval tests/test_iteration_cleanup.py::TestNormalizedScoreMapView tests/test_iteration_cleanup.py::TestAutocorrelation tests/test_iteration_cleanup.py::TestCanonicalProcessed tests/test_metrics/test_spectral_metrics.py --tb=short -q)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(py -m pytest tests/test_gui/test_widgets.py tests/test_iteration_cleanup.py::TestSignalInspectorModes tests/test_iteration_cleanup.py::TestEnvelopeOverlayCleanup --tb=short -q)",
+      "Bash(py -m pytest tests/test_iteration_cleanup.py --tb=short -q)"
     ]
   }
 }

@@ -241,7 +241,7 @@ class TestSignalToolsPanel:
     def test_has_mode_combo(self):
         panel = SignalToolsPanel()
         assert panel.mode_combo is not None
-        assert panel.mode_combo.count() == 4
+        assert panel.mode_combo.count() == 6
 
     def test_default_mode_is_raw(self):
         panel = SignalToolsPanel()
