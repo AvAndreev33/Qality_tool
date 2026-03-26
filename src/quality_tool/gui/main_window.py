@@ -19,7 +19,7 @@ Layout:
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import QCoreApplication, QThread, Qt, Signal
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -42,6 +42,11 @@ from PySide6.QtWidgets import (
 from quality_tool.core.models import MetricMapResult, SignalSet, ThresholdResult
 from quality_tool.envelope.analytic import AnalyticEnvelopeMethod
 from quality_tool.envelope.registry import EnvelopeRegistry
+from quality_tool.cuda import (
+    GPU_METRIC_NAMES,
+    evaluate_metric_maps_gpu,
+    is_available as cuda_is_available,
+)
 from quality_tool.evaluation.evaluator import evaluate_metric_maps
 from quality_tool.evaluation.recipe import recipe_from_processing
 from quality_tool.evaluation.thresholding import apply_threshold
@@ -59,12 +64,7 @@ from quality_tool.comparison.normalization import (
 from quality_tool.gui.windows.compare_window import CompareWindow
 from quality_tool.gui.windows.histogram_window import HistogramWindow
 from quality_tool.gui.windows.map_3d_window import Map3DWindow
-from quality_tool.gui.windows.pixel_metrics_chart_window import (
-    PixelMetricsChartWindow,
-)
-from quality_tool.gui.windows.pixel_metrics_table_window import (
-    PixelMetricsTableWindow,
-)
+from quality_tool.gui.windows.pixel_metrics_window import PixelMetricsWindow
 from quality_tool.metrics.baseline.fringe_visibility import FringeVisibility
 from quality_tool.metrics.baseline.power_band_ratio import PowerBandRatio
 from quality_tool.metrics.baseline.snr import SNR
@@ -169,6 +169,78 @@ class _LoadWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class _ComputeWorker(QThread):
+    """Background thread for metric computation."""
+
+    progress = Signal(int, int)          # (done, total)
+    finished = Signal(dict, str)         # (results, backend_label)
+    failed = Signal(str)                 # error message
+
+    def __init__(
+        self,
+        signal_set,
+        metrics_to_compute,
+        active_recipe,
+        envelope_method,
+        chunk_size: int = 5_000,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._signal_set = signal_set
+        self._metrics = metrics_to_compute
+        self._active_recipe = active_recipe
+        self._envelope_method = envelope_method
+        self._chunk_size = chunk_size
+
+    def run(self) -> None:
+        def _cb(done: int, total: int) -> None:
+            self.progress.emit(done, total)
+
+        try:
+            results: dict = {}
+            backend_label = "cpu"
+
+            gpu_metrics = [
+                m for m in self._metrics if m.name in GPU_METRIC_NAMES
+            ]
+            cpu_metrics = [
+                m for m in self._metrics if m.name not in GPU_METRIC_NAMES
+            ]
+
+            if gpu_metrics and cuda_is_available():
+                try:
+                    gpu_results = evaluate_metric_maps_gpu(
+                        self._signal_set,
+                        gpu_metrics,
+                        active_recipe=self._active_recipe,
+                        envelope_method=self._envelope_method,
+                        progress_callback=_cb,
+                        chunk_size=self._chunk_size,
+                    )
+                    results.update(gpu_results)
+                    backend_label = "gpu" if not cpu_metrics else "gpu+cpu"
+                except Exception:
+                    cpu_metrics = self._metrics
+                    backend_label = "cpu (gpu fallback)"
+            elif gpu_metrics:
+                cpu_metrics = self._metrics
+
+            if cpu_metrics:
+                cpu_results = evaluate_metric_maps(
+                    self._signal_set,
+                    cpu_metrics,
+                    active_recipe=self._active_recipe,
+                    envelope_method=self._envelope_method,
+                    progress_callback=_cb,
+                    chunk_size=self._chunk_size,
+                )
+                results.update(cpu_results)
+
+            self.finished.emit(results, backend_label)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class MainWindow(QMainWindow):
     """Central application window."""
 
@@ -183,6 +255,7 @@ class MainWindow(QMainWindow):
 
         # ----- session state ---------------------------------------------
         self._load_worker: _LoadWorker | None = None
+        self._compute_worker: _ComputeWorker | None = None
         self._signal_set: SignalSet | None = None
         self._selected_metrics: list[str] = []
         self._computed_results: dict[str, MetricMapResult] = {}
@@ -190,8 +263,8 @@ class MainWindow(QMainWindow):
         self._display_mode: str = "score"  # "score" | "masked" | "mask_only"
         self._compare_windows: list[CompareWindow] = []
         self._histogram_windows: list[HistogramWindow] = []
-        self._pixel_metric_windows: list[QWidget] = []
-        self._3d_windows: list[Map3DWindow] = []
+        self._pixel_metrics_window: PixelMetricsWindow | None = None
+        self._3d_window: Map3DWindow | None = None
 
         # Mask-source metric: which metric's score map drives the threshold.
         self._mask_source_metric: str | None = None
@@ -306,9 +379,9 @@ class MainWindow(QMainWindow):
         tb.addWidget(btn_settings)
 
         # Compute
-        btn_compute = QPushButton("Compute")
-        btn_compute.clicked.connect(self._on_compute)
-        tb.addWidget(btn_compute)
+        self._btn_compute = QPushButton("Compute")
+        self._btn_compute.clicked.connect(self._on_compute)
+        tb.addWidget(self._btn_compute)
 
         tb.addSeparator()
 
@@ -457,12 +530,15 @@ class MainWindow(QMainWindow):
         self._processing = new_settings
 
     def _on_compute(self) -> None:
-        """Run all selected metrics on the loaded dataset."""
+        """Run all selected metrics on the loaded dataset (background)."""
         if self._signal_set is None:
             self._status.showMessage("No dataset loaded")
             return
         if not self._selected_metrics:
             self._status.showMessage("No metrics selected — use Metrics…")
+            return
+        if self._compute_worker is not None:
+            self._status.showMessage("Computation already running…")
             return
 
         # Collect metrics that still need computation.
@@ -485,41 +561,45 @@ class MainWindow(QMainWindow):
         active_recipe = recipe_from_processing(self._processing)
         envelope_method = self._get_envelope_method()
 
-        names_to_compute = [m.name for m in metrics_to_compute]
+        self._compute_metric_names = [m.name for m in metrics_to_compute]
         self._status.showMessage(
-            f"Computing {', '.join(names_to_compute)}…"
+            f"Computing {', '.join(self._compute_metric_names)}…"
         )
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(0)
         self._progress_bar.show()
-        self._status.repaint()
 
-        def _progress(done: int, total: int) -> None:
-            pct = int(100 * done / total) if total else 100
-            self._status.showMessage(
-                f"Computing {', '.join(names_to_compute)}… {pct}%"
-            )
-            self._progress_bar.setValue(pct)
-            QCoreApplication.processEvents()
+        self._btn_load.setEnabled(False)
+        self._btn_compute.setEnabled(False)
 
-        try:
-            new_results = evaluate_metric_maps(
-                self._signal_set,
-                metrics_to_compute,
-                active_recipe=active_recipe,
-                envelope_method=envelope_method,
-                progress_callback=_progress,
-                chunk_size=5_000,
-            )
-        except Exception as exc:
-            self._progress_bar.hide()
-            QMessageBox.critical(self, "Compute error", str(exc))
-            self._status.showMessage("Compute failed")
-            return
+        worker = _ComputeWorker(
+            self._signal_set,
+            metrics_to_compute,
+            active_recipe,
+            envelope_method,
+            chunk_size=5_000,
+            parent=self,
+        )
+        worker.progress.connect(self._on_compute_progress)
+        worker.finished.connect(self._on_compute_finished)
+        worker.failed.connect(self._on_compute_failed)
+        self._compute_worker = worker
+        worker.start()
 
+    def _on_compute_progress(self, done: int, total: int) -> None:
+        pct = int(100 * done / total) if total else 100
+        self._status.showMessage(
+            f"Computing {', '.join(self._compute_metric_names)}… {pct}%"
+        )
+        self._progress_bar.setValue(pct)
+
+    def _on_compute_finished(self, new_results: dict, backend_label: str) -> None:
+        self._compute_worker = None
         self._progress_bar.hide()
-        self._computed_results.update(new_results)
+        self._btn_load.setEnabled(True)
+        self._btn_compute.setEnabled(True)
 
+        self._computed_results.update(new_results)
         self._refresh_map_combo()
 
         # Show first selected metric by default.
@@ -540,7 +620,16 @@ class MainWindow(QMainWindow):
         reused = total - new
         self._status.showMessage(
             f"{total} metric(s) available  ({new} new, {reused} reused)"
+            f"  [{backend_label}]"
         )
+
+    def _on_compute_failed(self, error_msg: str) -> None:
+        self._compute_worker = None
+        self._progress_bar.hide()
+        self._btn_load.setEnabled(True)
+        self._btn_compute.setEnabled(True)
+        QMessageBox.critical(self, "Compute error", error_msg)
+        self._status.showMessage("Compute failed")
 
     def _on_map_switch(self, text: str) -> None:
         """Switch the displayed map to a different computed metric."""
@@ -566,6 +655,15 @@ class MainWindow(QMainWindow):
             bool(self._computed_results),
         )
 
+        # Auto-update pixel metrics window if visible.
+        if (
+            self._pixel_metrics_window is not None
+            and self._pixel_metrics_window.isVisible()
+            and self._computed_results
+        ):
+            data = self._gather_pixel_metrics_data(row, col)
+            self._pixel_metrics_window.update_data((row, col), data)
+
         value = self._map_viewer.value_at(row, col)
         name = self._current_map_name or "—"
         val_str = f"{value:.4g}" if value is not None else "—"
@@ -586,7 +684,7 @@ class MainWindow(QMainWindow):
             self._update_signal_display(*self._selected_pixel)
 
     def _on_pixel_metrics(self) -> None:
-        """Open table and bar chart windows for the selected pixel."""
+        """Open combined table + chart window for the selected pixel."""
         if self._selected_pixel is None or not self._computed_results:
             self._status.showMessage("No pixel or metrics available")
             return
@@ -594,13 +692,12 @@ class MainWindow(QMainWindow):
         row, col = self._selected_pixel
         data = self._gather_pixel_metrics_data(row, col)
 
-        table_win = PixelMetricsTableWindow((row, col), data)
-        table_win.show()
-        self._pixel_metric_windows.append(table_win)
+        if self._pixel_metrics_window is None:
+            self._pixel_metrics_window = PixelMetricsWindow(parent=None)
 
-        chart_win = PixelMetricsChartWindow((row, col), data)
-        chart_win.show()
-        self._pixel_metric_windows.append(chart_win)
+        self._pixel_metrics_window.update_data((row, col), data)
+        self._pixel_metrics_window.show()
+        self._pixel_metrics_window.raise_()
 
     def _gather_pixel_metrics_data(
         self, row: int, col: int,
@@ -716,9 +813,13 @@ class MainWindow(QMainWindow):
             data = result.score_map.copy()
             title = f"{name} — score map (3D)"
 
-        win = Map3DWindow(data, title=title)
-        win.show()
-        self._3d_windows.append(win)
+        if self._3d_window is None:
+            self._3d_window = Map3DWindow(parent=None)
+
+        self._3d_window.update_data(data, title=title)
+        self._3d_window.show()
+        self._3d_window.raise_()
+        self._3d_window.activateWindow()
 
     def _on_info(self) -> None:
         info: dict[str, str] = {}
@@ -1127,6 +1228,10 @@ class MainWindow(QMainWindow):
 
     def _clear_session(self) -> None:
         """Reset session state when a new dataset is loaded."""
+        if self._3d_window is not None:
+            self._3d_window.hide()
+        if self._pixel_metrics_window is not None:
+            self._pixel_metrics_window.hide()
         self._computed_results.clear()
         self._current_threshold = None
         self._mask_source_metric = None

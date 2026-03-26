@@ -590,3 +590,9 @@ tests/test_metrics/__pycache__/test_metric_registration.cpython-314-pytest-9.0.2
 tests/test_metrics/__pycache__/test_phase_metrics.cpython-314-pytest-9.0.2.pyc
 tests/__pycache__/test_iteration_map_nav.cpython-314-pytest-9.0.2.pyc
 src/quality_tool/gui/__pycache__/style.cpython-314.pyc
+src/quality_tool/cuda/__pycache__/__init__.cpython-314.pyc
+src/quality_tool/cuda/__pycache__/_backend.cpython-314.pyc
+src/quality_tool/cuda/__pycache__/_evaluator.cpython-314.pyc
+tests/test_cuda/__pycache__/__init__.cpython-314.pyc
+tests/test_cuda/__pycache__/test_backend.cpython-314-pytest-9.0.2.pyc
+src/quality_tool/gui/windows/__pycache__/pixel_metrics_window.cpython-314.pyc

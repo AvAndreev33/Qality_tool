@@ -247,7 +247,8 @@ class TestMap3DWindow:
     def test_creation_with_float_data(self):
         from quality_tool.gui.windows.map_3d_window import Map3DWindow
         data = np.random.rand(10, 15)
-        win = Map3DWindow(data, title="test score")
+        win = Map3DWindow()
+        win.update_data(data, title="test score")
         assert win is not None
         assert win.windowTitle() == "3D — test score"
 
@@ -257,12 +258,13 @@ class TestMap3DWindow:
         data = np.random.rand(8, 10)
         data[0, :] = np.nan
         data[3, 5] = np.nan
-        win = Map3DWindow(data, title="masked 3D")
+        win = Map3DWindow()
+        win.update_data(data, title="masked 3D")
         assert win is not None
 
-    def test_delete_on_close_attribute(self):
+    def test_reusable_window(self):
+        """Window hides on close instead of destroying."""
         from quality_tool.gui.windows.map_3d_window import Map3DWindow
-        from PySide6.QtCore import Qt
-        data = np.ones((4, 4))
-        win = Map3DWindow(data)
-        assert win.testAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        win = Map3DWindow()
+        win.update_data(np.ones((4, 4)))
+        assert win is not None

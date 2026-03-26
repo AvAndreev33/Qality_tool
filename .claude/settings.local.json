@@ -97,7 +97,26 @@
       "Bash(python -m pytest tests/test_gui/ -x -q)",
       "Bash(py -m pytest tests/test_gui/ -x -q)",
       "Bash(py -m pytest -x -q)",
-      "Bash(py -c \"from quality_tool.gui.style import DARK_STYLESHEET, apply_mpl_dark_style, create_dark_figure; print\\(''OK''\\)\")"
+      "Bash(py -c \"from quality_tool.gui.style import DARK_STYLESHEET, apply_mpl_dark_style, create_dark_figure; print\\(''OK''\\)\")",
+      "Bash(find /c/Users/avand/PycharmProjects/wli_research_workbench -path */engine/*.py -type f)",
+      "Bash(py -m pytest tests/ -x -q --timeout=60)",
+      "Bash(py -m pytest tests/test_cuda/ -v)",
+      "Bash(py -c \"import pyvista; import pyvistaqt; print\\(''pyvista'', pyvista.__version__\\)\")",
+      "Bash(pip install:*)",
+      "Bash(py -m pip install pyvista pyvistaqt)",
+      "Bash(py -m pip install pyqtgraph PyOpenGL)",
+      "Bash(py -c \"import pyqtgraph.opengl as gl; print\\(''pyqtgraph.opengl OK''\\)\")",
+      "Bash(.venv/Scripts/python.exe -c \"import pyqtgraph.opengl as gl; print\\(''OK:'', gl\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pip install pyqtgraph PyOpenGL)",
+      "Bash(.venv/Scripts/python.exe -m pip install PyOpenGL)",
+      "Bash(.venv/Scripts/python.exe -c \"import pyqtgraph.opengl as gl; print\\(''OK''\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_gui/ -x -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_gui/test_widgets.py::TestMapViewer::test_pixel_selected_signal -x -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_gui/ -q --ignore=tests/test_gui/test_widgets.py)",
+      "Bash(.venv/Scripts/python.exe -c \"import pyqtgraph; print\\(pyqtgraph.__version__\\)\")",
+      "Bash(.venv/Scripts/python.exe -c \"from pyqtgraph.opengl import GLAxisItem, GLTextItem; print\\(''OK''\\)\")",
+      "Bash(py -m pytest tests/test_gui/test_main_window.py -x -q)",
+      "Bash(py -m pytest tests/test_io/ -x -q)"
     ]
   }
 }

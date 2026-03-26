@@ -15,7 +15,9 @@ Expected directory layout::
 
 from __future__ import annotations
 
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Sequence
 
@@ -135,19 +137,33 @@ def load_image_stack(
     expected_shape = first.shape
 
     # Pre-allocate the signal array in canonical format (H, W, M).
+    # float32 is sufficient for 8/16-bit TIFF data and halves memory.
     h, w = expected_shape
     m = len(frames)
-    signals = np.empty((h, w, m), dtype=float)
-    signals[:, :, 0] = first.astype(float)
+    signals = np.empty((h, w, m), dtype=np.float32)
+    signals[:, :, 0] = first
 
-    for i, fp in enumerate(frames[1:], start=1):
+    # Read remaining frames in parallel threads (I/O-bound).
+    _shape_errors: list[str] = []
+
+    def _read_frame(args: tuple[int, Path]) -> None:
+        i, fp = args
         frame = tifffile.imread(str(fp))
         if frame.shape != expected_shape:
-            raise ValueError(
+            _shape_errors.append(
                 f"Frame {fp.name} has shape {frame.shape}, "
                 f"expected {expected_shape}"
             )
-        signals[:, :, i] = frame.astype(float)
+            return
+        signals[:, :, i] = frame
+
+    workers = min(len(frames) - 1, os.cpu_count() or 4, 8)
+    if workers > 0:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(_read_frame, enumerate(frames[1:], start=1)))
+
+    if _shape_errors:
+        raise ValueError(_shape_errors[0])
 
     # --- sidecar info ---
     if info_path is None:

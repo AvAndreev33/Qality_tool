@@ -15,10 +15,9 @@ Its current purpose is to:
 - support interactive inspection through a thin GUI layer,
 - remain extensible toward broader experimentation workflows.
 
-The architecture should support:
+The architecture supports:
 - stable reference CPU computation,
-- future performance work,
-- future CUDA backend integration,
+- optional CUDA-accelerated evaluation via CuPy (see `cuda_backend_spec.md`),
 - rapid addition of new metrics and derived representations.
 
 ---
@@ -61,10 +60,9 @@ This architecture currently covers:
 Out of scope for the current architecture:
 - synthetic signal generation,
 - benchmark orchestration,
-- large-scale experiment management,
-- CUDA implementation itself.
+- large-scale experiment management.
 
-The architecture should still remain compatible with those future directions.
+The architecture should remain compatible with those future directions.
 
 ---
 
@@ -401,24 +399,16 @@ Metrics must remain easy to add and test.
 
 ---
 
-## 5.9 Metric input policy
+## 5.9 Signal recipe and recipe binding
 
-Each metric must declare which signal representation it is allowed to use.
+Each metric declares a `SignalRecipe` (what preprocessing to apply) and a `recipe_binding` that controls how the effective recipe is resolved:
 
-Current minimal policy:
-- `raw`
-- `processed`
+- `"fixed"` — the metric always uses its declared recipe, regardless of the active session pipeline.
+- `"active"` — the metric uses the current active processing pipeline from the GUI/session.
 
-### Meaning
+A `SignalRecipe` is a frozen dataclass describing preprocessing steps (baseline, detrend, normalize, smooth, ROI). Pre-defined recipes include `RAW` (identity), `ROI_ONLY`, and `ROI_MEAN_SUBTRACTED_LINEAR_DETRENDED`.
 
-- `raw` means the metric must evaluate the original signal from the dataset and must ignore preprocessing / ROI transformations for its input.
-- `processed` means the metric evaluates the current processed signal path produced by the active preprocessing / ROI pipeline.
-
-This policy must be defined with the metric or its metadata, not implemented as ad hoc GUI logic.
-
-This keeps evaluation semantics explicit and makes future metric addition safer.
-
-The policy system should remain minimal for now, but should be extensible later toward more constrained requirements if needed.
+The evaluator groups metrics by effective recipe via a planner, prepares signals once per group, and builds a `RepresentationBundle` containing shared derived representations (envelope, spectral) for the group. Each representation is computed at most once per recipe per chunk.
 
 ---
 
@@ -528,6 +518,7 @@ The GUI is a thin desktop layer over the backend.
 Its purpose is to provide:
 - dataset loading,
 - map viewing,
+- 3D surface viewing (hardware-accelerated OpenGL with LOD),
 - signal inspection,
 - metric selection,
 - threshold interaction,
@@ -544,6 +535,20 @@ The GUI must not duplicate backend logic for:
 - thresholding.
 
 The GUI should remain an orchestration and visualization layer only.
+
+### 3D map viewer
+
+The 3D surface viewer (`Map3DWindow`) uses pyqtgraph.opengl for hardware-accelerated rendering with matplotlib CPU fallback.
+
+Key design decisions:
+- **Reusable window**: the GL context is created once and persisted; `closeEvent` hides instead of destroying. This avoids pyqtgraph's global shader-cache invalidation on context destruction.
+- **Interactive LOD**: during mouse interaction a decimated mesh (~120K vertices) is shown; full resolution (~500K vertices cap) restores on mouse release.
+- **Color mapping**: computed on already-decimated arrays via matplotlib colormaps, passed as flat `(N, 4)` to work around pyqtgraph 0.14 per-face color indexing bug.
+- **Z normalization**: geometry normalized to `[-0.5..+0.5]` for stable positioning; colors mapped from original values.
+- **Controls**: left-drag = orbit, middle-drag = pan, wheel = zoom, Space = reset to home view.
+- **Axes**: white `GLLinePlotItem` lines with `GLTextItem` labels (row, col, value) from origin.
+
+Implementation: `src/quality_tool/gui/windows/map_3d_window.py`.
 
 ---
 
@@ -801,23 +806,44 @@ quality_tool/
 
       spectral/
         fft.py
+        priors.py
 
       metrics/
         base.py
         registry.py
         batch_result.py
         baseline/
+        envelope/
+        spectral/
+        noise/
+        phase/
+        correlation/
+        regularity/
 
       evaluation/
         evaluator.py
+        planner.py
+        bundle.py
+        recipe.py
         thresholding.py
+
+      cuda/
+        __init__.py
+        _backend.py
+        _evaluator.py
 
       gui/
         app.py
         main_window.py
+        style.py
         widgets/
         dialogs/
         windows/
+          map_3d_window.py
+          compare_window.py
+          histogram_window.py
+          pixel_metrics_chart_window.py
+          pixel_metrics_table_window.py
 
   tests/
     test_io/
@@ -860,9 +886,8 @@ To add a new metadata field:
 2. map it to a normalized key,
 3. keep compatibility with missing-field cases.
 
-### Adding a future execution backend
-Future execution backends such as CUDA should be introduced as alternative execution implementations of stable pipeline stages, not as a rewrite of project semantics.
-The CPU path remains the reference implementation unless explicitly replaced by validated parity logic.
+### CUDA backend
+The CUDA backend (`quality_tool.cuda`) provides GPU-accelerated evaluation for all 39 metrics via CuPy. It mirrors the CPU evaluator interface and returns identical result types. The CPU path remains the reference implementation; the GPU path is an optional acceleration layer with automatic fallback. See `cuda_backend_spec.md` for details.
 
 ---
 
@@ -886,10 +911,9 @@ The system should satisfy the following requirements:
 The current practical priorities are:
 1. maintain a stable working real-data workbench
 2. preserve correctness of metric semantics
-3. expand metrics and experimentation capability
+3. extend toward height-map computation workflows
 4. improve usability of inspection and comparison
-5. perform profiling and performance-guided optimization
-6. introduce CUDA backend later as a separate validated step
+5. leverage CUDA backend for performance on supported hardware
 
 ---
 

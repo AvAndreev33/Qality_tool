@@ -103,111 +103,38 @@ This idea should shape the roadmap, even though v0.1 still implements only the f
 
 ---
 
-## 5. v0.1 — Real-data quality analysis core
+## 5. v1.0 — Real-data quality analysis core (done)
 
-## Goal
+Delivered. The quality-analysis core is complete and working:
 
-Deliver a first practical version focused on real WLI signal quality analysis.
-
-This version must solve the immediate engineering need:
-load real data, compute quality metrics, inspect maps and masks, and compare criteria on real datasets.
-
-## Scope
-
-v0.1 includes:
-
-- loading image stack data from `.tif` / `.tiff`
-- loading txt signal matrix data from `.txt`
-- reading acquisition metadata from sidecar info files when available
-- reading `z_axis.txt` when available
-- fallback to index-based z-axis when not available
-- unified internal signal representation `(H, W, M)`
-- first preprocessing support
-- first ROI extraction support using `segmentSize`
-- first envelope interface and minimal implementation support
-- baseline metric interface
-- several baseline quality metrics
-- evaluator for full-image metric computation
-- direct 2D quality map generation
-- thresholding to produce 2D masks
-- basic visualization
-- export of quality map and mask as `.txt`
-
-## Deliverables
-
-- core data models
-- metadata parser
-- z-axis loader
-- image stack loader
-- txt matrix loader
-- preprocessing scaffold
-- ROI extraction scaffold
-- envelope interface
-- metric interface and registry
-- first baseline metrics
-- evaluator
-- thresholding
-- minimal plots/maps support
-- txt export
-
-## Definition of done
-
-v0.1 is successful if the user can:
-
-- load a real dataset from stack or txt
-- obtain a valid `(H, W, M)` representation
-- confirm width, height, and signal length
-- inspect whether metadata and z-axis were loaded correctly
-- evaluate several baseline metrics
-- obtain meaningful 2D quality maps
-- apply thresholding to obtain meaningful masks
-- export maps and masks as `.txt`
-- repeat this workflow reliably on multiple datasets
-
-## Important constraint
-
-Even though the long-term direction is a broader research workbench, v0.1 must remain:
-- focused
-- understandable
-- not overengineered
-- useful for the current quality-analysis task
+- two loaders (image stack, txt matrix), metadata, z-axis
+- unified `SignalSet(H, W, M)` representation
+- preprocessing: baseline, detrend, normalize, smooth, ROI
+- envelope: Hilbert-based analytic envelope
+- spectral: batch rFFT with priors
+- 39 quality metrics across 7 categories (baseline, envelope, spectral, noise, phase, correlation, regularity)
+- recipe-based evaluation planner with grouped chunked batch processing
+- thresholding with flexible mask-source selection
+- full desktop GUI: map viewer, signal inspector, compare, histogram, 3D, pixel-metrics
+- CUDA backend: all 39 metrics accelerated via CuPy with auto-detect and CPU fallback
+- export of maps and masks as `.txt`
 
 ---
 
-## 6. v0.2 — Modular signal-processing experimentation
+## 6. Next direction — Height-map computation and research tooling
 
 ## Goal
 
-Extend the quality-analysis core into a more composable experimentation environment.
+Extend the workbench from quality analysis toward height-map computation using different algorithms, configurable via the existing Settings infrastructure.
 
-This version should make it easy to test not only multiple metrics, but also multiple preprocessing and envelope variants.
+Parallel track: research tooling — agent-assisted literature monitoring, classification of recent publications by relevance and method class, lightweight interest scoring to help prioritize what to read and potentially implement.
 
-## Scope
+## Scope (to be refined)
 
-v0.2 should introduce stronger modularity for:
-
-- preprocessing methods
-- preprocessing configuration
-- ROI policies
-- envelope methods
-- envelope registry
-- comparison of multiple metrics on the same dataset
-- comparison of multiple preprocessing/envelope combinations
-- reproducible experiment settings
-
-## Deliverables
-
-- preprocessing registry or structured preprocessing API
-- envelope registry with multiple methods
-- support for comparing multiple pipeline variants
-- clearer experiment metadata
-- comparison tables or summaries
-- improved test coverage
-- more mature visualization for comparison workflows
-
-## Intended outcome
-
-At this stage, the project starts to behave more like a **research sandbox** rather than only a single-purpose quality tool.
+- height-map computation from WLI signals (multiple algorithms)
+- settings-driven algorithm configuration
+- agent-assisted research workflow for WLI literature
+- publication classification and interest scoring
 
 ---
 
@@ -341,22 +268,17 @@ The platform becomes a practical environment for inventing and validating new WL
 
 ## 11. Priority order
 
-## Highest priority now
-- real-data loading
-- stable internal representation
-- baseline quality analysis workflow
-- direct quality maps and threshold masks
-- simple extensibility for future methods
+## Current
+- height-map computation workflows
+- settings infrastructure for algorithm configuration
+- research literature monitoring tooling
 
-## Next priority
-- modular preprocessing
-- modular envelope support
-- systematic comparison of combinations
+## Next
+- systematic pipeline comparison
 - reproducible experiments
+- synthetic data and benchmark scenarios
 
-## Later priority
-- synthetic data
-- benchmark scenarios
+## Later
 - composite method development
 - broader research automation
 
@@ -377,26 +299,12 @@ The project should grow by extending a stable core, not by trying to implement t
 
 ---
 
-## 13. Recommended implementation order right now
+## 13. Recommended next steps
 
-The current recommended order remains unchanged:
-
-1. core models
-2. metadata parser
-3. z-axis loader
-4. image stack loader
-5. txt matrix loader
-6. preprocessing basics
-7. ROI extraction
-8. envelope interface and first method support
-9. metric interface and registry
-10. first baseline metrics
-11. evaluator
-12. thresholding
-13. visualization
-14. txt export
-
-This sequence is intentionally aligned with the immediate quality-analysis task.
+1. design height-map computation interface and first algorithm
+2. integrate with existing Settings dialog for algorithm configuration
+3. prototype research-agent workflow for literature scanning
+4. refine roadmap based on initial height-map results
 
 ---
 

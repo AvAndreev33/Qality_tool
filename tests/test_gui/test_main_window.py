@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from PySide6.QtCore import QCoreApplication
 
 from quality_tool.core.models import MetricMapResult, SignalSet
 from quality_tool.evaluation.evaluator import evaluate_metric_maps
@@ -10,6 +11,13 @@ from quality_tool.evaluation.thresholding import apply_threshold
 from quality_tool.gui.dialogs.info_dialog import InfoDialog
 from quality_tool.gui.main_window import MainWindow
 from quality_tool.gui.windows.compare_window import CompareWindow
+
+
+def _wait_for_compute(window: MainWindow) -> None:
+    """Block until the background compute worker finishes and signals are delivered."""
+    if window._compute_worker is not None:
+        window._compute_worker.wait()
+        QCoreApplication.processEvents()
 
 
 # ------------------------------------------------------------------
@@ -251,6 +259,7 @@ class TestMainWindow:
         monkeypatch.setattr(mw_mod, "evaluate_metric_maps", tracking_evaluate)
 
         window._on_compute()
+        _wait_for_compute(window)
 
         # Only fringe_visibility should have been computed.
         assert len(calls) == 1
@@ -280,6 +289,7 @@ class TestMainWindow:
         )
 
         window._on_compute()
+        _wait_for_compute(window)
 
         # Threshold must still be the same object — not reset.
         assert window._current_threshold is tr
